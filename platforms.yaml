@@ -1,0 +1,121 @@
+platforms:
+- name: ElinaInstagramReels
+  login_url: https://www.instagram.com/accounts/login/
+  username_secret: INSTA_USER
+  password_secret: INSTA_PASS
+  support_email: support@instagram.com
+  paypal_linking: false
+  api_request: true
+  selectors:
+    user: input[name='username']
+    pass: input[name='password']
+    submit: button[type='submit']
+    post_login_wait_selector: nav, header
+- name: Printify
+  login_url: https://printify.com/app/login
+  username_secret: PRINTIFY_USER
+  password_secret: PRINTIFY_PASS
+  support_email: support@printify.com
+  paypal_linking: true
+  api_request: true
+  selectors:
+    user: input[type='email']
+    pass: input[type='password']
+    submit: button[type='submit']
+    post_login_wait_selector: '[data-test=''dashboard'']'
+- name: MeshyAI
+  login_url: https://www.meshy.ai/login
+  username_secret: MESHY_USER
+  password_secret: MESHY_PASS
+  support_email: support@meshy.ai
+  paypal_linking: true
+  api_request: true
+  selectors:
+    user: input[type='email'], input[name='email']
+    pass: input[type='password']
+    submit: button[type='submit'], button:has-text('Sign in')
+    post_login_wait_selector: nav, header, main
+- name: CadCrowd
+  login_url: https://www.cadcrowd.com/login
+  username_secret: CADCROWD_USER
+  password_secret: CADCROWD_PASS
+  support_email: info@cadcrowd.com
+  paypal_linking: true
+  api_request: true
+  selectors:
+    user: input[type='email'], input[name='email']
+    pass: input[type='password']
+    submit: button[type='submit']
+    post_login_wait_selector: nav, header, main
+- name: Fiverr
+  login_url: https://www.fiverr.com/login
+  username_secret: FIVERR_USER
+  password_secret: FIVERR_PASS
+  support_email: support@fiverr.com
+  paypal_linking: true
+  api_request: true
+  selectors:
+    user: input[type='text'][name='username']
+    pass: input[type='password']
+    submit: button[type='submit']
+    post_login_wait_selector: header, nav
+- name: YouTube
+  login_url: https://accounts.google.com/signin/v2/identifier
+  username_secret: YOUTUBE_USER
+  password_secret: YOUTUBE_PASS
+  support_email: youtube-api-support@google.com
+  paypal_linking: true
+  api_request: true
+  selectors:
+    user: input[type='email']
+    pass: input[type='password']
+    submit: button
+    post_login_wait_selector: '#logo'
+- name: StockImageVideo
+  login_url: https://submit.shutterstock.com/login
+  username_secret: STOCK_USER
+  password_secret: STOCK_PASS
+  support_email: submit@shutterstock.com
+  paypal_linking: true
+  api_request: true
+  selectors:
+    user: input[type='email']
+    pass: input[type='password']
+    submit: button[type='submit']
+    post_login_wait_selector: nav, header
+- name: AIBookPublishingKDP
+  login_url: https://kdp.amazon.com/en_US/
+  username_secret: KDP_USER
+  password_secret: KDP_PASS
+  support_email: kdp-support@amazon.com
+  paypal_linking: true
+  api_request: true
+  selectors:
+    user: input[type='email']
+    pass: input[type='password']
+    submit: input#signInSubmit
+    post_login_wait_selector: '#dashboard'
+- name: ShopifyDigitalProducts
+  login_url: https://accounts.shopify.com/store-login
+  username_secret: SHOPIFY_USER
+  password_secret: SHOPIFY_PASS
+  support_email: support@shopify.com
+  paypal_linking: true
+  api_request: true
+  selectors:
+    user: input[type='email']
+    pass: input[type='password']
+    submit: button[type='submit']
+    post_login_wait_selector: nav, header
+- name: StationeryExport
+  login_url: https://sellercentral.amazon.in/ap/signin
+  username_secret: STATIONERY_USER
+  password_secret: STATIONERY_PASS
+  support_email: seller-support@amazon.in
+  paypal_linking: true
+  api_request: true
+  selectors:
+    user: input[type='email']
+    pass: input[type='password']
+    submit: input#signInSubmit
+    post_login_wait_selector: '#sc-navtab-bar'

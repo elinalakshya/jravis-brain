@@ -1,0 +1,200 @@
+"""
+Phase 1 Connectors - all platforms merged
+"""
+
+import os
+import requests
+from playwright.sync_api import sync_playwright
+
+# --------------------------
+# Instagram
+# --------------------------
+INSTAGRAM_USER = os.getenv("PHASE1_EMAIL")
+INSTAGRAM_PASS = os.getenv("PHASE1_PASS")
+
+def login_instagram():
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.goto("https://www.instagram.com/accounts/login/")
+        page.fill("input[name='username']", INSTAGRAM_USER)
+        page.fill("input[name='password']", INSTAGRAM_PASS)
+        page.click("button[type='submit']")
+        page.wait_for_timeout(5000)
+        cookies = page.context.cookies()
+        browser.close()
+        return {"status": "logged_in", "cookies": cookies}
+
+# --------------------------
+# Printify
+# --------------------------
+PRINTIFY_API_KEY = os.getenv("PRINTIFY_API_KEY")
+
+def get_printify_shops():
+    url = "https://api.printify.com/v1/shops.json"
+    headers = {"Authorization": f"Bearer {PRINTIFY_API_KEY}"}
+    r = requests.get(url, headers=headers)
+    return r.json() if r.status_code == 200 else {"error": r.text}
+
+# --------------------------
+# MeshyAI
+# --------------------------
+MESHY_API_KEY = os.getenv("MESHY_API_KEY")
+
+def list_models():
+    url = "https://api.meshy.ai/v1/models"
+    headers = {"Authorization": f"Bearer {MESHY_API_KEY}"}
+    r = requests.get(url, headers=headers)
+    return r.json() if r.status_code == 200 else {"error": r.text}
+
+# --------------------------
+# CadCrowd
+# --------------------------
+def login_cadcrowd():
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.goto("https://www.cadcrowd.com/login")
+        page.fill("input[name='email']", os.getenv("PHASE1_EMAIL"))
+        page.fill("input[name='password']", os.getenv("PHASE1_PASS"))
+        page.click("button[type='submit']")
+        page.wait_for_timeout(5000)
+        cookies = page.context.cookies()
+        browser.close()
+        return {"status": "logged_in", "cookies": cookies}
+
+# --------------------------
+# Fiverr
+# --------------------------
+def login_fiverr():
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.goto("https://www.fiverr.com/login")
+        page.fill("input[name='username']", os.getenv("PHASE1_EMAIL"))
+        page.fill("input[name='password']", os.getenv("PHASE1_PASS"))
+        page.click("button[type='submit']")
+        page.wait_for_timeout(5000)
+        cookies = page.context.cookies()
+        browser.close()
+        return {"status": "logged_in", "cookies": cookies}
+
+# --------------------------
+# YouTube
+# --------------------------
+YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
+
+def get_channel_stats(channel_id):
+    url = f"https://www.googleapis.com/youtube/v3/channels?part=statistics&id={channel_id}&key={YOUTUBE_API_KEY}"
+    r = requests.get(url)
+    return r.json() if r.status_code == 200 else {"error": r.text}
+
+# --------------------------
+# Shutterstock
+# --------------------------
+def login_shutterstock():
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.goto("https://submit.shutterstock.com/login")
+        page.fill("input[name='user']", os.getenv("PHASE1_EMAIL"))
+        page.fill("input[name='password']", os.getenv("PHASE1_PASS"))
+        page.click("button[type='submit']")
+        page.wait_for_timeout(5000)
+        cookies = page.context.cookies()
+        browser.close()
+        return {"status": "logged_in", "cookies": cookies}
+
+# --------------------------
+# Amazon KDP
+# --------------------------
+def login_kdp():
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.goto("https://kdp.amazon.com/")
+        page.fill("input[name='email']", os.getenv("PHASE1_EMAIL"))
+        page.fill("input[name='password']", os.getenv("PHASE1_PASS"))
+        page.click("input[type='submit']")
+        page.wait_for_timeout(5000)
+        cookies = page.context.cookies()
+        browser.close()
+        return {"status": "logged_in", "cookies": cookies}
+
+# --------------------------
+# Shopify
+# --------------------------
+def login_shopify():
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.goto("https://accounts.shopify.com/store-login")
+        page.fill("input[name='account[email]']", os.getenv("PHASE1_EMAIL"))
+        page.fill("input[name='account[password]']", os.getenv("PHASE1_PASS"))
+        page.click("button[type='submit']")
+        page.wait_for_timeout(5000)
+        cookies = page.context.cookies()
+        browser.close()
+        return {"status": "logged_in", "cookies": cookies}
+
+# --------------------------
+# Amazon Seller
+# --------------------------
+def login_amazon_seller():
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.goto("https://sellercentral.amazon.in/")
+        page.fill("input[name='username']", os.getenv("PHASE1_EMAIL"))
+        page.fill("input[name='password']", os.getenv("PHASE1_PASS"))
+        page.click("input[type='submit']")
+        page.wait_for_timeout(5000)
+        cookies = page.context.cookies()
+        browser.close()
+        return {"status": "logged_in", "cookies": cookies}
+
+
+"""
+Phase 1 Connectors - all platforms
+"""
+
+import os
+mport requests
+from playwright.sync_api import sync_playwright
+
+# Instagram
+INSTAGRAM_USER = os.getenv("PHASE1_EMAIL")
+INSTAGRAM_PASS = os.getenv("PHASE1_PASS")
+
+def login_instagram():
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.goto("https://www.instagram.com/accounts/login/")
+        page.fill("input[name='username']", INSTAGRAM_USER)
+        page.fill("input[name='password']", INSTAGRAM_PASS)
+        page.click("button[type='submit']")
+        page.wait_for_timeout(5000)
+        cookies = page.context.cookies()
+        browser.close()
+        return {"status": "logged_in", "cookies": cookies}
+
+# Printify
+PRINTIFY_API_KEY = os.getenv("PRINTIFY_API_KEY")
+
+def get_printify_shops():
+    url = "https://api.printify.com/v1/shops.json"
+    headers = {"Authorization": f"Bearer {PRINTIFY_API_KEY}"}
+    r = requests.get(url, headers=headers)
+    return r.json() if r.status_code == 200 else {"error": r.text}
+
+# MeshyAI
+MESHY_API_KEY = os.getenv("MESHY_API_KEY")
+
+def list_models():
+    url = "https://api.meshy.ai/v1/models"
+    headers = {"Authorization": f"Bearer {MESHY_API_KEY}"}
+    r = requests.get(url, headers=headers)
+    return r.json() if r.status_code == 200 else {"error": r.text}
+
+# (and continue for Fiverr, CadCrowd, YouTube, Shutterstock, KDP, Shopify, Amazon Seller)

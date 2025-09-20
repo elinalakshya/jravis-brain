@@ -1,1 +1,44 @@
+<<<<<<< HEAD
 
+=======
+Flask==3.0.3
+gunicorn==23.0.0
+APScheduler==3.10.4
+pdfkit==1.0.0
+PyPDF2==3.0.1
+fpdf==1.7.2
+pandas==2.2.2
+requests==2.32.3
+python-dotenv==1.0.1
+schedule==1.2.2
+pytz==2024.2
+pypdf==5.0.1
+reportlab==4.2.2
+playwright==1.48.0
+PyYAML==6.0.2
+rich==13.9.2
+
+
+flask
+openai
+requests
+chromadb
+sentence_transformers
+python-dotenv
+pandas
+pymupdf
+sqlalchemy
+uvicorn
+fastapi
+>>>>>>> 713bdd5 (Initial commit)
+
+echo "web: python main.py" > Procfile
+echo "flask
+schedule
+fpdf
+PyPDF2
+openai
+psutil
+requests
+pandas
+matplotlib" > requirements.txt
