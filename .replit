@@ -38,29 +38,11 @@ localPort = 36793
 externalPort = 4200
 
 [[ports]]
-localPort = 38485
-externalPort = 6000
-
-[[ports]]
 localPort = 43725
 externalPort = 3002
 
 [nix]
-packages = [
-  "freetype",
-  "gitFull",
-  "glibcLocales",
-  "google-cloud-sdk",
-  "jq",
-  "mailutils",
-  "nano",
-  "playwright-driver",
-  "zulu",
-  "python39Packages.bootstrapped-pip",
-  "imagemagick6",
-  "docker-client",
-  "python37",
-]
+packages = ["freetype", "gitFull", "glibcLocales", "google-cloud-sdk", "jq", "mailutils", "nano", "playwright-driver", "zulu", "python39Packages.bootstrapped-pip", "imagemagick6", "docker-client"]
 
 [agent]
 expertMode = true
@@ -88,25 +70,3 @@ waitForPort = 5000
 
 [workflows.workflow.metadata]
 outputType = "webview"
-
-# JRAVIS Replit Config
-run = "python3Full main.py"
-
-[packager]
-language = "python3"
-
-[env]
-PYTHONPATH = "."
-PORT = "8080"
-JARVIS_SECRET = "MY OG"
-
-[unitTest]
-
-
-{ pkgs }: {
-deps = [
-    pkgs.python3Full
-    pkgs.python3Packages.pip
-  ];
-}
-language = "python3"
