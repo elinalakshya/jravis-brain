@@ -1,16 +1,2 @@
-
-run = "python3.10 main.py"
-language = "python3"
-
-[packager]
-packageManager = "pip"
-
-[env]
-PORT = "8080"
-JARVIS_SECRET = "MY OG"
-OPENAI_API_KEY = ""
-VA_EMAIL = ""
-VA_EMAIL_PASS = ""
-
-[unitTest]
-language = "python3"
+[agent]
+expertMode = true
