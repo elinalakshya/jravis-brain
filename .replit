@@ -1,72 +1,24 @@
-run = "python3 DailyReport/app.py"
-modules = ["nodejs-20", "python-3.11"]
-
-[[ports]]
-localPort = 5000
-externalPort = 80
-
-[[ports]]
-localPort = 8000
-externalPort = 8000
-
-[[ports]]
-localPort = 8050
-externalPort = 3001
-
-[[ports]]
-localPort = 8080
-externalPort = 8080
-
-[[ports]]
-localPort = 10000
-externalPort = 3000
-
-[[ports]]
-localPort = 10001
-externalPort = 5000
-
-[[ports]]
-localPort = 10002
-externalPort = 5173
-
-[[ports]]
-localPort = 35025
-externalPort = 3003
-
-[[ports]]
-localPort = 36793
-externalPort = 4200
-
-[[ports]]
-localPort = 43725
-externalPort = 3002
-
-[nix]
-packages = ["freetype", "gitFull", "glibcLocales", "google-cloud-sdk", "jq", "mailutils", "nano", "playwright-driver", "zulu", "python39Packages.bootstrapped-pip", "imagemagick6", "docker-client"]
-
 [agent]
 expertMode = true
+# -----------------------
+# .replit config for JRAVIS
+# -----------------------
 
-[workflows]
-runButton = "Project"
+run = "python3.10 main.py"
 
-[[workflows.workflow]]
-name = "Project"
-mode = "parallel"
-author = "agent"
+language = "python3"
 
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "VA Bot Server"
+# Use Nix to manage dependencies
+[packager]
+  packageManager = "pip"
 
-[[workflows.workflow]]
-name = "VA Bot Server"
-author = "agent"
+[env]
+  PORT = "8080"
+  JARVIS_SECRET = "MY OG"
+  OPENAI_API_KEY = ""
+  VA_EMAIL = ""
+  VA_EMAIL_PASS = ""
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "python3 main.py"
-waitForPort = 5000
-
-[workflows.workflow.metadata]
-outputType = "webview"
+# Set unit test runner to avoid parse errors
+[unitTest]
+  language = "python3"
