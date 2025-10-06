@@ -370,7 +370,7 @@ def gmail_autoreply_once():
 # -----------------------
 # ROUTES: Dashboard + API + Chat + Streams + Reports
 # -----------------------
-HOME_HTML = """
+HOME_HTML = r"""
 <!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>JRAVIS — Dashboard</title>
 <style>body{font-family:Inter,system-ui;background:#041126;color:#e6f0ff;padding:18px} .card{background:#0f2336;padding:12px;border-radius:10px;margin-bottom:12px}</style>
