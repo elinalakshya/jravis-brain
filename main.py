@@ -370,37 +370,37 @@ def gmail_autoreply_once():
 # -----------------------
 # ROUTES: Dashboard + API + Chat + Streams + Reports
 # -----------------------
-HOME_HTML = r"""
-<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>JRAVIS — Dashboard</title>
-<style>body{font-family:Inter,system-ui;background:#041126;color:#e6f0ff;padding:18px} .card{background:#0f2336;padding:12px;border-radius:10px;margin-bottom:12px}</style>
-</head><body>
-<h1>🧠 JRAVIS — Dhruvayu (Mission 2040)</h1>
-<div class="card"><b>Health</b><pre id="health">loading...</pre></div>
-<div class="card"><b>Projections</b><pre id="projs">loading...</pre></div>
-<div class="card"><b>Gmail Auto-Reply Status</b><pre id="gmail">loading...</pre></div>
-<div class="card"><b>Chat</b><div id="messages"></div>
-<input id="chatInput" style="width:80%"/><button onclick="sendChat()">Send</button></div>
-<script>
-async function loadAll(){
-  try{
-    const h = await fetch('/health'); document.getElementById('health').textContent = JSON.stringify(await h.json(),null,2);
-    const p = await fetch('/projections?key=' + encodeURIComponent('%s')); document.getElementById('projs').textContent = JSON.stringify(await p.json(),null,2);
-    const g = await fetch('/gmail-status'); document.getElementById('gmail').textContent = JSON.stringify(await g.json(),null,2);
-  }catch(e){
-    console.error(e);
-  }
-}
-async function sendChat(){
-  const msg=document.getElementById('chatInput').value;
-  if(!msg) return;
-  const r=await fetch('/chat?msg='+encodeURIComponent(msg));
-  const j=await r.json();
-  const e=document.getElementById('messages'); e.innerHTML += '<div><b>Boss:</b>'+msg+'<br/><b>JRAVIS:</b>'+j.reply+'</div>';
-}
-loadAll(); setInterval(loadAll,30000);
-</script>
-</body></html>
+HOME_HTML = """\
+<!doctype html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>JRAVIS Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body{background:#020d1f;color:#e6f0ff;font-family:Inter,system-ui;padding:18px;}
+    .progress>span{display:block;height:100%%;background:linear-gradient(90deg,#32d583,#2ab7ff)}
+    button{background:#206db0;color:#fff;border:none;padding:8px 12px;border-radius:8px;cursor:pointer;}
+  </style>
+</head>
+<body>
+  <h1>🧠 JRAVIS — Dhruvayu (Mission 2040)</h1>
+  <div id="messages"></div>
+  <input id="chatInput" placeholder="Ask JRAVIS..." />
+  <button onclick="sendChat()">Send</button>
+  <script>
+    async function sendChat(){
+      const msg=document.getElementById('chatInput').value;
+      const r=await fetch('/chat?msg='+encodeURIComponent(msg));
+      const j=await r.json();
+      const m=document.getElementById('messages');
+      m.innerHTML+='<div>'+msg+'</div><div>'+j.reply+'</div>';
+    }
+  </script>
+</body>
+</html>
+"""
+
 """ % (SECRET_KEY.replace('"', '\\"'))
 
 @app.route("/")
