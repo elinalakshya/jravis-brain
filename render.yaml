@@ -15,8 +15,6 @@ services:
   startCommand: python main.py
   autoDeploy: true
   envVars:
-    - key: PORT
-      value: 8080
     - key: JARVIS_SECRET
       value: MY OG
     - key: OPENAI_API_KEY
