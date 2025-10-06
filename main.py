@@ -623,6 +623,39 @@ def watchdog_loop():
 
 threading.Thread(target=watchdog_loop, daemon=True).start()
 
+import schedule, smtplib, threading, time
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+def send_daily_email():
+    sender = os.getenv("VA_EMAIL")
+    password = os.getenv("VA_EMAIL_PASS")
+    receiver = "nrveeresh327@gmail.com"
+    subject = "✅ VA BOT Daily Report"
+    body = "Boss, VA BOT has completed today’s scheduled tasks successfully."
+    msg = MIMEMultipart()
+    msg["From"] = sender
+    msg["To"] = receiver
+    msg["Subject"] = subject
+    msg.attach(MIMEText(body, "plain"))
+    try:
+        with smtplib.SMTP("smtp.gmail.com", 587) as server:
+            server.starttls()
+            server.login(sender, password)
+            server.send_message(msg)
+        logging.info("📧 Daily report email sent successfully.")
+    except Exception as e:
+        logging.error(f"❌ Failed to send email: {e}")
+
+# Run every day at 10:00 AM IST
+schedule.every().day.at("10:00").do(send_daily_email)
+
+def scheduler_loop():
+    while True:
+        schedule.run_pending()
+        time.sleep(60)
+threading.Thread(target=scheduler_loop, daemon=True).start()
+
 # -----------------------
 # Auto-kill old same-name processes (if psutil available)
 # -----------------------
