@@ -7,3 +7,10 @@ psutil
 requests
 pandas
 matplotlib
+apscheduler
+pdfkit
+playwright
+python-dotenv
+pytz
+pyyaml
+rich

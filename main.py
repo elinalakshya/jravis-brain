@@ -699,3 +699,9 @@ if __name__ == "__main__":
     logging.info("✅ JRAVIS initializing — scheduler & dashboard (Phases automation enabled).")
     logging.info("Dashboard (Render) will bind to port %s", PORT)
     run_app_forever()
+
+import os
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
