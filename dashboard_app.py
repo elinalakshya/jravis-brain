@@ -116,8 +116,7 @@ app = Flask(__name__)
 def index():
     return jsonify({
         "status": "✅ VA BOT online",
-        "time": datetime.datetime.now().isoformat(),
-        "message": "JRAVIS connection active"
+        "time": datetime.datetime.now().isoformat()
     })
 
 
