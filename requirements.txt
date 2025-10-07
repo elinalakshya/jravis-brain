@@ -14,3 +14,9 @@ python-dotenv
 pytz
 pyyaml
 rich
+
+
+flask
+requests
+schedule
+psutil

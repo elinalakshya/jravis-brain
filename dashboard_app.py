@@ -62,9 +62,11 @@ setInterval(loadJSON, 60000);
 </script>
 """
 
+
 @app.route('/dashboard')
 def dashboard():
     return render_template_string(TEMPLATE)
+
 
 @app.route('/latest-json')
 def latest_json():
@@ -74,26 +76,56 @@ def latest_json():
     with open(files[-1], 'r') as fh:
         return jsonify(json.load(fh))
 
+
 @app.route('/proxy/health')
 def proxy_health():
     # call local app health endpoint
     try:
         import urllib.request, json
-        with urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5) as r:
+        with urllib.request.urlopen('http://127.0.0.1:8000/health',
+                                    timeout=5) as r:
             return (r.read(), r.getheader('Content-Type'))
     except Exception as e:
         return jsonify({"error": str(e)}), 502
+
 
 @app.route('/run-capture', methods=['POST'])
 def run_capture():
     # run capture script (non-blocking quick exec) - we run it synchronously but return text
     try:
-        rc = os.system('PYTHONPATH=. python3 DailyReport/capture_meshytube.py > /tmp/capture.out 2>&1')
-        with open('/tmp/capture.out','r') as fh:
+        rc = os.system(
+            'PYTHONPATH=. python3 DailyReport/capture_meshytube.py > /tmp/capture.out 2>&1'
+        )
+        with open('/tmp/capture.out', 'r') as fh:
             out = fh.read(2000)
         return out if out else 'ok'
     except Exception as e:
         return str(e), 500
 
+
 if __name__ == '__main__':
     app.run(port=8050, host='0.0.0.0')
+
+from flask import Flask, jsonify
+import os, datetime
+
+app = Flask(__name__)
+
+
+@app.route("/")
+def index():
+    return jsonify({
+        "status": "✅ VA BOT online",
+        "time": datetime.datetime.now().isoformat(),
+        "message": "JRAVIS connection active"
+    })
+
+
+@app.route("/health")
+def health():
+    return "OK", 200
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
