@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
 """
-Tiny local dashboard for VA Bot:
-- /dashboard : shows latest meshytube JSON preview + link to health endpoint
-Run: python3 dashboard_app.py
+VA BOT Dashboard for Render deployment
+- /dashboard : web dashboard
+- /latest-json : preview latest MeshyTube JSON
+- /proxy/health : proxy check
+- /run-capture : trigger capture script
+- /health : simple uptime ping
 """
-from flask import Flask, jsonify, send_file, render_template_string
-import glob, json, os
+
+from flask import Flask, jsonify, send_file, render_template_string, request
+import glob, json, os, datetime, urllib.request
 
 app = Flask(__name__)
 
+# -------------------- HTML TEMPLATE --------------------
 TEMPLATE = """
 <!doctype html>
 <title>VA Bot Dashboard</title>
@@ -36,9 +41,9 @@ pre { white-space: pre-wrap; word-break:break-word; }
 <script>
 async function loadHealth(){
   try{
-    const r = await fetch('/proxy/health');
-    const j = await r.json();
-    document.getElementById('health').textContent = JSON.stringify(j, null, 2);
+    const r = await fetch('/health');
+    const t = await r.text();
+    document.getElementById('health').textContent = t;
   }catch(e){ document.getElementById('health').textContent = String(e); }
 }
 async function loadJSON(){
@@ -63,12 +68,26 @@ setInterval(loadJSON, 60000);
 """
 
 
-@app.route('/dashboard')
+# -------------------- ROUTES --------------------
+@app.route("/")
+def index():
+    return jsonify({
+        "status": "✅ VA BOT online",
+        "time": datetime.datetime.now().isoformat()
+    })
+
+
+@app.route("/dashboard")
 def dashboard():
     return render_template_string(TEMPLATE)
 
 
-@app.route('/latest-json')
+@app.route("/health")
+def health():
+    return "OK", 200
+
+
+@app.route("/latest-json")
 def latest_json():
     files = sorted(glob.glob('DailyReport/out/connectors_meshytube_*.json'))
     if not files:
@@ -77,11 +96,9 @@ def latest_json():
         return jsonify(json.load(fh))
 
 
-@app.route('/proxy/health')
+@app.route("/proxy/health")
 def proxy_health():
-    # call local app health endpoint
     try:
-        import urllib.request, json
         with urllib.request.urlopen('http://127.0.0.1:8000/health',
                                     timeout=5) as r:
             return (r.read(), r.getheader('Content-Type'))
@@ -89,9 +106,8 @@ def proxy_health():
         return jsonify({"error": str(e)}), 502
 
 
-@app.route('/run-capture', methods=['POST'])
+@app.route("/run-capture", methods=["POST"])
 def run_capture():
-    # run capture script (non-blocking quick exec) - we run it synchronously but return text
     try:
         rc = os.system(
             'PYTHONPATH=. python3 DailyReport/capture_meshytube.py > /tmp/capture.out 2>&1'
@@ -103,35 +119,8 @@ def run_capture():
         return str(e), 500
 
 
-if __name__ == '__main__':
-    app.run(port=8050, host='0.0.0.0')
-
-from flask import Flask, jsonify
-import os, datetime
-
-app = Flask(__name__)
-
-
-@app.route("/")
-def index():
-    return jsonify({
-        "status": "✅ VA BOT online",
-        "time": datetime.datetime.now().isoformat()
-    })
-
-
-@app.route("/health")
-def health():
-    return "OK", 200
-
-
-import os
-
+# -------------------- ENTRY POINT --------------------
 if __name__ == "__main__":
-    port = os.environ.get("PORT")
-    if port is None:
-        port = 10000  # fallback if Render variable not loaded
-    else:
-        port = int(port)
-    print(f"⚙️  Starting VA BOT on port {port}")
+    port = int(os.environ.get("PORT", "10000"))
+    print(f"⚙️  Starting VA BOT Dashboard on port {port}")
     app.run(host="0.0.0.0", port=port)
