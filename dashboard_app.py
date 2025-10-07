@@ -125,6 +125,13 @@ def health():
     return "OK", 200
 
 
+import os
+
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
+    port = os.environ.get("PORT")
+    if port is None:
+        port = 10000  # fallback if Render variable not loaded
+    else:
+        port = int(port)
+    print(f"⚙️  Starting VA BOT on port {port}")
     app.run(host="0.0.0.0", port=port)
