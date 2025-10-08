@@ -1,126 +1,139 @@
 #!/usr/bin/env python3
-"""
-VA BOT Dashboard for Render deployment
-- /dashboard : web dashboard
-- /latest-json : preview latest MeshyTube JSON
-- /proxy/health : proxy check
-- /run-capture : trigger capture script
-- /health : simple uptime ping
-"""
-
-from flask import Flask, jsonify, send_file, render_template_string, request
-import glob, json, os, datetime, urllib.request
+from flask import Flask, jsonify, render_template_string
+import os, datetime, subprocess, json
 
 app = Flask(__name__)
 
-# -------------------- HTML TEMPLATE --------------------
-TEMPLATE = """
+# ------------------------------
+# Mission Data
+# ------------------------------
+CURRENT_EARNINGS_INR = 125000
+CURRENT_EARNINGS_USD = 1500
+PROGRESS_PERCENT = 32
+
+PHASES = {
+    "Phase 1 — Fast Kickstart": {
+        "streams": [{
+            "name": "Elina Instagram Reels",
+            "status": "✅ Active"
+        }, {
+            "name": "Printify POD Store",
+            "status": "⚙️ Syncing"
+        }, {
+            "name": "MeshyAI Models",
+            "status": "⚠️ Reconnect needed"
+        }, {
+            "name": "YouTube Automation",
+            "status": "✅ Active"
+        }, {
+            "name": "Stationery Export",
+            "status": "⚠️ Awaiting invoice"
+        }]
+    },
+    "Phase 2 — Global Expansion": {
+        "streams": [{
+            "name": "Shopify Digital Products",
+            "status": "🕒 Planned"
+        }, {
+            "name": "AI Book Publishing",
+            "status": "🕒 Planned"
+        }]
+    },
+    "Phase 3 — Robo Mode": {
+        "streams": [{
+            "name": "Auto Inspection Garuda",
+            "status": "🧠 Development"
+        }, {
+            "name": "Dhruvayu VA Bot",
+            "status": "⚙️ Operational"
+        }]
+    }
+}
+
+# ------------------------------
+# HTML Template (No special characters in {{ }})
+# ------------------------------
+MAIN_HTML = """
 <!doctype html>
-<title>VA Bot Dashboard</title>
-<style>
-body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; margin: 24px; }
-.card { background: #fff; padding: 18px; border-radius: 10px; box-shadow: 0 6px 18px rgba(0,0,0,0.06); margin-bottom: 16px; }
-h1 { margin:0 0 8px 0; font-size: 20px; }
-pre { white-space: pre-wrap; word-break:break-word; }
-.badge { display:inline-block; padding:4px 8px; border-radius:999px; background:#eef; font-weight:600; }
-</style>
-<h1>VA Bot — Dashboard</h1>
-<div class="card">
-  <div><strong>Health</strong> <span class="badge">/health</span></div>
-  <pre id="health">Loading...</pre>
-</div>
-<div class="card">
-  <div><strong>Latest connectors_meshytube JSON</strong></div>
-  <pre id="json">Loading...</pre>
-</div>
-<div class="card">
-  <div><strong>Actions</strong></div>
-  <button onclick="runCapture()">Run capture now</button>
-  <em> — calls local capture script via server</em>
-</div>
-<script>
-async function loadHealth(){
-  try{
-    const r = await fetch('/health');
-    const t = await r.text();
-    document.getElementById('health').textContent = t;
-  }catch(e){ document.getElementById('health').textContent = String(e); }
-}
-async function loadJSON(){
-  try{
-    const r = await fetch('/latest-json');
-    if(r.status===204){ document.getElementById('json').textContent = "No JSON found"; return; }
-    const j = await r.json();
-    document.getElementById('json').textContent = JSON.stringify(j, null, 2);
-  }catch(e){ document.getElementById('json').textContent = String(e); }
-}
-async function runCapture(){
-  const r = await fetch('/run-capture', { method: 'POST' });
-  const txt = await r.text();
-  alert('Capture run: ' + txt);
-  await loadJSON();
-}
-loadHealth();
-loadJSON();
-setInterval(loadHealth, 30000);
-setInterval(loadJSON, 60000);
-</script>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>JRAVIS Mission 2040</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #f6f8fa; margin: 30px; color: #222; }
+    h1 { margin-bottom: 10px; }
+    .earn-large { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+    .progress { height: 10px; background: #ddd; border-radius: 5px; margin-top: 6px; overflow: hidden; }
+    .bar { height: 10px; background: linear-gradient(90deg, #4caf50, #81c784); border-radius: 5px; transition: width 0.6s ease; }
+    .phase { margin-top: 20px; padding: 16px; background: #fff; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,.1); }
+    ul { list-style: none; padding: 0; }
+    li { padding: 4px 0; }
+  </style>
+</head>
+<body>
+  <h1>Mission 2040 Dashboard</h1>
+
+  <div class="earn-large">
+    ₹ {{ earn_inr }} | $ {{ earn_usd }}
+  </div>
+
+  <div>
+    <b>Progress:</b> {{ progress_percent }}%
+    <div class="progress"><div class="bar" style="width:{{ progress_percent }}%"></div></div>
+  </div>
+
+  {% for name, data in phases.items() %}
+  <div class="phase">
+    <h2>{{ name }}</h2>
+    <ul>
+      {% for stream in data.streams %}
+      <li>{{ stream.name }} — {{ stream.status }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endfor %}
+</body>
+</html>
 """
 
 
-# -------------------- ROUTES --------------------
+# ------------------------------
+# Routes
+# ------------------------------
 @app.route("/")
-def index():
-    return jsonify({
-        "status": "✅ VA BOT online",
-        "time": datetime.datetime.now().isoformat()
-    })
-
-
-@app.route("/dashboard")
 def dashboard():
-    return render_template_string(TEMPLATE)
+    return render_template_string(MAIN_HTML,
+                                  earn_inr=str(CURRENT_EARNINGS_INR),
+                                  earn_usd=str(CURRENT_EARNINGS_USD),
+                                  progress_percent=PROGRESS_PERCENT,
+                                  phases=PHASES)
 
 
 @app.route("/health")
 def health():
-    return "OK", 200
-
-
-@app.route("/latest-json")
-def latest_json():
-    files = sorted(glob.glob('DailyReport/out/connectors_meshytube_*.json'))
-    if not files:
-        return ('', 204)
-    with open(files[-1], 'r') as fh:
-        return jsonify(json.load(fh))
-
-
-@app.route("/proxy/health")
-def proxy_health():
-    try:
-        with urllib.request.urlopen('http://127.0.0.1:8000/health',
-                                    timeout=5) as r:
-            return (r.read(), r.getheader('Content-Type'))
-    except Exception as e:
-        return jsonify({"error": str(e)}), 502
+    return jsonify({
+        "status": "OK",
+        "uptime": datetime.datetime.now().isoformat()
+    })
 
 
 @app.route("/run-capture", methods=["POST"])
 def run_capture():
     try:
-        rc = os.system(
-            'PYTHONPATH=. python3 DailyReport/capture_meshytube.py > /tmp/capture.out 2>&1'
-        )
-        with open('/tmp/capture.out', 'r') as fh:
-            out = fh.read(2000)
-        return out if out else 'ok'
+        result = subprocess.run(
+            ["python3", "DailyReport/capture_meshytube.py"],
+            capture_output=True,
+            text=True,
+            timeout=15)
+        return f"Capture complete:\\n{result.stdout or result.stderr}"
     except Exception as e:
-        return str(e), 500
+        return f"Error: {e}", 500
 
 
-# -------------------- ENTRY POINT --------------------
+# ------------------------------
+# Run
+# ------------------------------
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", "10000"))
-    print(f"⚙️  Starting VA BOT Dashboard on port {port}")
+    port = int(os.environ.get("PORT", 10000))
+    print(f"⚙️ Starting JRAVIS Dashboard on port {port}")
     app.run(host="0.0.0.0", port=port)

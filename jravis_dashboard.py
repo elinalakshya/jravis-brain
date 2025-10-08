@@ -14,9 +14,14 @@ app.secret_key = os.environ.get("SECRET_KEY", "JRAVIS_SECRET")
 
 # --------- Config & Simulated Data (replace with live hooks later) ----------
 LOCK_CODE_NAME = "lock code"  # refer to lock code privately (do not print)
-PASSCODE = os.environ.get(
-    "LOCK_CODE_VALUE",
-    "REPLACE_ME")  # set your lock code in Render env var instead of embedding
+
+# Load lock code safely (won’t crash if missing)
+PASSCODE = os.environ.get("LOCK_CODE_VALUE")
+if not PASSCODE or PASSCODE.strip() == "":
+    print(
+        "⚠️  Warning: LOCK_CODE_VALUE not found in environment — using fallback code for now."
+    )
+    PASSCODE = "MY OG"  # temporary fallback, only active if Render variable is missing
 
 # Simulated mission/earnings/progress
 MISSION_TARGET = 10000000  # target (for progress bar demo)
@@ -140,73 +145,82 @@ button{margin-top:12px;padding:10px 18px;border-radius:8px;border:none;backgroun
 <button>Unlock</button>{% if error %}<div style="color:#ff6b6b;margin-top:10px">{{error}}</div>{% endif %}
 <div class="hint">Locked access — I will not display the lock code here again.</div></form></body></html>"""
 
-MAIN_HTML = """<!doctype html>
-<html><head><meta charset="utf-8"><title>JRAVIS — Mission 2040</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-<style>
-:root{--bg:#071023;--card:#0f1724;--muted:#9aa6b2;--accent:#10b981}
-body{font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto;background:var(--bg);color:#e6eef6;margin:0}
-.header{display:flex;justify-content:space-between;align-items:center;padding:22px 28px}
-.title{font-size:20px;font-weight:700}
-.container{display:flex;gap:18px;padding:0 28px 28px}
-.left{flex:1.2}
-.right{width:420px}
-.card{background:var(--card);border-radius:12px;padding:18px;margin-bottom:14px;box-shadow:0 8px 30px rgba(2,6,23,.6)}
-.progress{background:#071827;height:12px;border-radius:999px;overflow:hidden}
-.progress > i{display:block;height:100%;background:linear-gradient(90deg,#10b981,#34d399)}
-.row{display:flex;gap:12px;align-items:center;justify-content:space-between}
-.small{color:var(--muted);font-size:13px}
-.phase-table{width:100%;border-collapse:collapse;margin-top:8px}
-.phase-table tr td{padding:10px 6px;border-bottom:1px solid rgba(255,255,255,0.02)}
-.phase-click{cursor:pointer}
-.stream-list{margin-top:10px}
-.stream{display:flex;justify-content:space-between;padding:10px;border-radius:8px;background:#071827;margin-bottom:8px}
-.chat-wrap{height:60vh;display:flex;flex-direction:column}
-.chat-box{flex:1;padding:12px;overflow:auto;border-radius:8px;background:#081425}
-.input{display:flex;padding:8px;margin-top:8px}
-.input input{flex:1;padding:10px;border-radius:8px;border:none;background:#071827;color:#fff}
-.input button{margin-left:8px;padding:10px 12px;border-radius:8px;border:none;background:#3b82f6;color:#fff}
-.msg{margin-bottom:8px;padding:8px;border-radius:8px}
-.msg.user{text-align:right;color:#c7d2fe}
-.msg.jravis{text-align:left;color:#bbf7d0}
-.earn-large{font-size:28px;font-weight:700}
-</style>
-</head><body>
-<div class="header">
+# --- HTML for the dashboard page ---
+MAIN_HTML = """
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>JRAVIS Mission 2040</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      background: #f6f8fa;
+      margin: 30px;
+      color: #222;
+    }
+    h1 {
+      margin-bottom: 10px;
+    }
+    .earn-large {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .progress {
+      height: 10px;
+      background: #ddd;
+      border-radius: 5px;
+      margin-top: 6px;
+      overflow: hidden;
+    }
+    .bar {
+      height: 10px;
+      background: linear-gradient(90deg, #4caf50, #81c784);
+      border-radius: 5px;
+      transition: width 0.6s ease;
+    }
+    .phase {
+      margin-top: 20px;
+      padding: 16px;
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,.1);
+    }
+    ul {
+      list-style: none;
+      padding: 0;
+    }
+    li {
+      padding: 4px 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>Mission 2040 Dashboard</h1>
+  <div class="earn-large">
+    ₹ {{ "{:,}".format(earn_inr|int) }} &nbsp; | &nbsp; $ {{ "{:,}".format(earn_usd|int) }}
+  </div>
   <div>
-    <div class="title">Jarvis Brain — Mission 2040 Dashboard</div>
-    <div class="small">Control center · Live</div>
-  </div>
-  <div style="text-align:right">
-    <div class="small">Earnings</div>
-    <div class="earn-large">₹ {{earn_inr:,}} &nbsp; <small style="font-size:16px">|</small> &nbsp; $ {{earn_usd}}</div>
-  </div>
-</div>
-
-<div class="container">
-  <div class="left">
-    <div class="card">
-      <div class="row"><div><strong>Mission 2040 Progress</strong><div class="small">Distance to target & timeline</div></div><div><strong>{{progress_percent}}%</strong></div></div>
-      <div style="height:12px;margin-top:10px" class="progress"><i style="width:{{progress_percent}}%"></i></div>
+    <b>Progress:</b> {{ progress_percent }}%
+    <div class="progress">
+      <div class="bar" style="width:{{ progress_percent }}%"></div>
     </div>
+  </div>
 
-    <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <div><strong>Phase Status</strong><div class="small">Click a phase to expand streams</div></div>
-      </div>
-      <table class="phase-table">
-        {% for pname, pdata in phases.items() %}
-        <tr class="phase-click" onclick="togglePhase('{{pname}}')">
-          <td style="width:180px"><strong>{{pname}}</strong><div class="small">{{pdata.status}}</div></td>
-          <td style="text-align:left">{{pdata.target}}</td>
-        </tr>
-        <tr id="phase-{{pname}}" style="display:none"><td colspan="2">
-          <div class="stream-list" id="list-{{pname}}"></div>
-        </td></tr>
+  {% for name, data in phases.items() %}
+    <div class="phase">
+      <h2>{{ name }}</h2>
+      <ul>
+        {% for stream in data.streams %}
+          <li>{{ stream.name }} — {{ stream.status }}</li>
         {% endfor %}
-      </table>
+      </ul>
     </div>
+  {% endfor %}
+</body>
+</html>
+"""
 
     <div class="card">
       <div class="row"><div><strong>Task Timeline</strong><div class="small">Completed · Today · Tomorrow</div></div><div class="small">—</div></div>
@@ -347,29 +361,29 @@ def api_streams():
 
 
 # Chat endpoint
-@app.route("/ask", methods=["POST"])
-def ask():
-    if not session.get("auth"):
-        return jsonify({"error": "unauthorized"}), 401
-    data = request.get_json() or {}
-    msg = data.get("message", "").strip()
-    if not msg:
-        return jsonify({"response": "Say something, Boss"}), 400
-    # store user
-    CHAT_HISTORY.append({
-        "who": "user",
-        "msg": msg,
-        "time": datetime.datetime.now().isoformat()
-    })
-    # get answer
-    resp = jravis_answer(msg)
-    # store jravis reply
-    CHAT_HISTORY.append({
-        "who": "jravis",
-        "msg": resp,
-        "time": datetime.datetime.now().isoformat()
-    })
-    return jsonify({"response": resp})
+@app.route("/", methods=["GET", "POST"])
+def login():
+    try:
+        if request.method == "POST":
+            code = request.form.get("code", "").strip()
+            # get env var safely
+            lock_from_env = os.environ.get("LOCK_CODE_VALUE", "").strip()
+            # if env var missing, use fallback
+            expected_code = lock_from_env if lock_from_env else PASSCODE
+
+            if code == expected_code:
+                session["auth"] = True
+                return redirect(url_for("main"))
+            else:
+                return render_template_string(LOGIN_HTML,
+                                              error="Incorrect lock code.")
+        return render_template_string(LOGIN_HTML)
+    except Exception as e:
+        # catch and log any internal errors instead of crashing
+        print(f"⚠️ Login error: {e}")
+        return render_template_string(
+            LOGIN_HTML,
+            error="Server error during login. Try again or check logs.")
 
 
 # Chat history (initial load)
