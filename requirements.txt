@@ -24,3 +24,7 @@ flask
 
 flask
 gunicorn
+
+flask
+gunicorn
+requests
