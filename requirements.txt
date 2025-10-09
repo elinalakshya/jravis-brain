@@ -15,11 +15,12 @@ pytz
 pyyaml
 rich
 
-
 flask
 requests
 schedule
 psutil
 
+flask
 
 flask
+gunicorn
