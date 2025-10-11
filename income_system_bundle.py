@@ -7,9 +7,9 @@ Integrates:
 2️⃣ Report Generator (daily + weekly summary/invoice)
 3️⃣ Progress API for JRAVIS Dashboard
 4️⃣ Scheduler for auto daily/weekly reports
+5️⃣ JSON API endpoint for real-time earnings (JRAVIS dashboard sync)
 
-✅ 100% Legal & Transparent
-✅ Auto-updates progress for Mission 2040
+✅ Legal, transparent, and automated for Mission 2040
 """
 
 import os
@@ -27,7 +27,7 @@ INCOME_FILE = "./income_log.json"
 SUMMARY_DIR = "./reports"
 TARGET = 40000000  # ₹4 Crore
 DAILY_TIME = (4, 30)  # 10:00 AM IST = 04:30 UTC
-WEEKLY_DAY = 6  # Sunday (0=Monday ... 6=Sunday)
+WEEKLY_DAY = 6  # Sunday (0=Mon ... 6=Sun)
 
 os.makedirs(SUMMARY_DIR, exist_ok=True)
 
@@ -81,23 +81,24 @@ def generate_reports():
 
 
 # ==============================
-# 📈 PROGRESS API (Dashboard)
+# 📈 PROGRESS DASHBOARD + API
 # ==============================
 app = Flask(__name__)
 
 
 def get_progress():
     if not os.path.exists(INCOME_FILE):
-        return 0
+        return 0, 0
     with open(INCOME_FILE) as f:
         data = json.load(f)
     total = sum(x["amount"] for x in data)
-    return min(round(total / TARGET * 100, 2), 100)
+    percent = min(round(total / TARGET * 100, 2), 100)
+    return total, percent
 
 
 @app.route("/progress")
 def progress():
-    percent = get_progress()
+    total, percent = get_progress()
     html = f"""
     <html>
     <head>
@@ -110,11 +111,29 @@ def progress():
     <body>
         <h1>Mission 2040 Progress</h1>
         <div class="bar-container"><div class="bar"></div></div>
-        <p>{percent}% of ₹4 Cr debt cleared — Target June 2027</p>
+        <p>{percent}% complete — ₹{total:,.2f} earned out of ₹4 Cr goal</p>
     </body>
     </html>
     """
     return render_template_string(html)
+
+
+# ==============================
+# 🧠 NEW API ENDPOINT: Earnings Summary
+# ==============================
+@app.route("/api/earnings_summary")
+def earnings_summary():
+    total, percent = get_progress()
+    return jsonify({
+        "total_income":
+        total,
+        "progress_percent":
+        percent,
+        "target":
+        TARGET,
+        "next_report_time":
+        "Daily at 10:00 AM IST, Weekly every Sunday 12:00 AM IST"
+    })
 
 
 # ==============================
@@ -126,12 +145,10 @@ def schedule_reports():
         # Daily trigger at 04:30 UTC (10 AM IST)
         if (now.hour, now.minute) == DAILY_TIME:
             generate_reports()
-
         # Weekly trigger (Sunday 00:00 UTC)
         if now.weekday() == WEEKLY_DAY and now.hour == 0 and now.minute == 0:
             generate_reports()
-
-        time.sleep(60)  # Check every minute
+        time.sleep(60)
 
 
 def start_scheduler():
