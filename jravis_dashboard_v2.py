@@ -339,6 +339,41 @@ def ask():
     return jsonify({"response": resp})
 
 
+from openai import OpenAI
+
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+
+@app.route("/chat", methods=["POST"])
+def chat():
+    user_msg = request.json.get("msg", "").strip()
+    if not user_msg:
+        return jsonify({"reply": "🤖 Boss, please enter a command."})
+
+    # Dhruvayu Brain Activation Layer
+    context = f"""
+    You are JRAVIS, the AI assistant built by Boss Veeresh for Mission 2040.
+    Speak in a respectful, confident, futuristic tone.
+    Always address the user as 'Boss'.
+    You are aware of: 30 passive income systems, Phase 1–3 mission plan, and VA Bot ecosystem.
+    """
+
+    response = client.chat.completions.create(
+        model="gpt-5",  # same reasoning core as me
+        messages=[{
+            "role": "system",
+            "content": context
+        }, {
+            "role": "user",
+            "content": user_msg
+        }],
+        max_tokens=200,
+        temperature=0.8)
+
+    jr_reply = response.choices[0].message.content.strip()
+    return jsonify({"reply": f"🤖 {jr_reply}"})
+
+
 @app.route("/chat/history")
 def chat_history():
     return jsonify([{

@@ -279,6 +279,35 @@ body{margin:0;font-family:Inter, Arial, sans-serif;background:linear-gradient(18
 </body></html>
 """
 
+<!-- 💰 Mission 2040 Earnings Progress Widget -->
+<div class="card glass-card" style="padding:20px; border-radius:20px; text-align:center;">
+  <h2>💰 Mission 2040 Progress</h2>
+  <div id="income-total" style="font-size:1.4rem; margin:10px 0;">Loading...</div>
+  <div class="bar-container" style="width:80%; margin:auto; background:#333; border-radius:10px; height:25px;">
+    <div id="progress-bar" style="height:25px; border-radius:10px; background:linear-gradient(90deg,#00ffff,#00ff00); width:0%; transition:width 1s ease;"></div>
+  </div>
+  <p id="progress-text" style="margin-top:10px;">Syncing...</p>
+</div>
+
+<script>
+async function updateEarnings() {
+  try {
+    const response = await fetch("https://income-system-bundle.onrender.com/api/earnings_summary");
+    const data = await response.json();
+    document.getElementById("income-total").innerHTML = 
+      `₹${data.total_income.toLocaleString()} / ₹${data.target.toLocaleString()}`;
+    document.getElementById("progress-bar").style.width = data.progress_percent + "%";
+    document.getElementById("progress-text").innerText = 
+      data.progress_percent + "% complete • Next report: " + data.next_report_time;
+  } catch (err) {
+    document.getElementById("income-total").innerText = "Error syncing data";
+  }
+}
+
+// initial call + auto-refresh every 30s
+updateEarnings();
+setInterval(updateEarnings, 30000);
+</script>
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -348,7 +377,6 @@ def api_send_task():
         return jsonify({"error": str(ve)}), 400
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 
 # -------------------------
 # API: task status

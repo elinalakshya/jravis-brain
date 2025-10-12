@@ -1,583 +1,543 @@
-#!/usr/bin/env python3
 """
-jravis_dashboard_v5.py
-JRAVIS v5 Ultimate Update — responsive dark-glass dashboard with:
-- Login (password hidden), Logout, Auto-logout (10 min)
-- Phase tabs (Phase 1/2/3) with per-phase data
-- Tracking amounts, progress bars, goal bar
-- Dhruvayu text chat (optional OpenAI fallback)
-- Daily (10:00 IST) & Weekly (Sun 00:00 UTC) reports + optional email
-- Global map + streams + Chart.js
-- Place logo image at static/logo.png
-Deploy: gunicorn jravis_dashboard_v5:app --bind 0.0.0.0:$PORT
+JRAVIS Dashboard v5 — Unified Deploy File
+This single file supports two deployment modes controlled by the environment variable
+  DEPLOY_TARGET = 'replit' | 'production'
+
+- Replit mode: friendly to Replit/Nix quirks (prints pip-downgrade hint). Uses local storage (reports/, static/)
+- Production mode: tuned for running behind Gunicorn (cleaner logs)
+
+Features:
+- Login (user: Boss) + hidden password via JRAVIS_PASSWORD env var
+- Auto-logout after 10 minutes inactivity
+- Phase tabs (editable), streams, progress bars
+- Dhruvayu chat with optional OpenAI fallback (OPENAI_API_KEY)
+- Daily (10:00 IST) & Weekly (Sun 00:00 UTC) reports; optional PDF (reportlab) and optional SMTP email
+- Chart.js + Leaflet map + static/logo.png
+
+How to run (Replit):
+  1) In Replit shell: pip install --upgrade pip==24.2
+  2) pip install flask python-dotenv reportlab openai
+  3) Set envs in Replit: JRAVIS_PASSWORD, SECRET_KEY, optionally OPENAI_API_KEY, SMTP_*
+  4) Run: python jravis_dashboard_v5.py
+
+How to run (Production):
+  pip install -r requirements.txt  # flask, python-dotenv, reportlab(optional), openai(optional)
+  export DEPLOY_TARGET=production
+  gunicorn jravis_dashboard_v5:app --bind 0.0.0.0:$PORT
+
+Put logo at static/logo.png
 """
-from flask import (Flask, request, jsonify, render_template_string, redirect,
-                   url_for, session, send_from_directory)
-import os, time, threading, datetime, json, requests, traceback, smtplib
+
+from flask import Flask, request, jsonify, send_from_directory, render_template_string, session, redirect, url_for, flash
+import os
+import json
+import threading
+import time
+from datetime import datetime, timedelta, timezone
+import uuid
+import smtplib
 from email.message import EmailMessage
-from functools import wraps
+from zoneinfo import ZoneInfo
+import atexit
 
-# --------------------
-# CONFIG / ENV
-# --------------------
-app = Flask(__name__, static_folder="static")
-app.secret_key = os.environ.get("SECRET_KEY", "jrvis_secret_fallback")
-LOCK_CODE = os.environ.get("LOCK_CODE", "2040lock")
-SHARED_KEY = os.environ.get("SHARED_KEY", "jrvis_vabot_2040_securekey")
-VABOT_URL = os.environ.get("VABOT_URL",
-                           "https://va-bot-connector.onrender.com")
-INCOME_API = os.environ.get("INCOME_API", "")
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
-EMAIL_TARGET = os.environ.get("EMAIL_TARGET", "")
-PORT = int(os.environ.get("PORT", 10000))
+# Optional libraries
+try:
+    from reportlab.lib.pagesizes import letter
+    from reportlab.pdfgen import canvas
+    REPORTLAB_AVAILABLE = True
+except Exception:
+    REPORTLAB_AVAILABLE = False
 
-AUTO_LOGOUT_SECONDS = 10 * 60  # 10 minutes
-REPORTS_DIR = "./reports"
-TARGET_AMOUNT = 40000000  # ₹4 Cr
-
-os.makedirs(REPORTS_DIR, exist_ok=True)
-
-# --------------------
-# Helpers: fetch income data (robust)
-# --------------------
-SAMPLE_STREAMS = [
-    {
-        "country": "India",
-        "country_code": "IN",
-        "stream": "Printify",
-        "amount": 624000,
-        "timestamp": "2025-10-10T00:00:00Z"
-    },
-    {
-        "country": "United States",
-        "country_code": "US",
-        "stream": "YouTube",
-        "amount": 8250,
-        "timestamp": "2025-10-09T00:00:00Z"
-    },
-    {
-        "country": "United Kingdom",
-        "country_code": "GB",
-        "stream": "Fiverr",
-        "amount": 1500,
-        "timestamp": "2025-10-08T00:00:00Z"
-    },
-]
-
-
-def fetch_income():
-    if not INCOME_API:
-        total = sum(s["amount"] for s in SAMPLE_STREAMS)
-        return {
-            "total_income": total,
-            "progress_percent": round(min(100, total / TARGET_AMOUNT * 100),
-                                      2),
-            "target": TARGET_AMOUNT,
-            "streams": SAMPLE_STREAMS,
-            "daily_income": [s["amount"] for s in SAMPLE_STREAMS],
-            "dates": [s["timestamp"][:10] for s in SAMPLE_STREAMS]
-        }
+OPENAI_AVAILABLE = False
+OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
+if OPENAI_API_KEY:
     try:
-        r = requests.get(INCOME_API, timeout=8)
-        r.raise_for_status()
-        payload = r.json()
-        # payload support: summary dict with streams OR list of entries
-        if isinstance(payload, dict):
-            streams = payload.get("streams") or payload.get("data") or []
-            if isinstance(streams, list) and streams:
-                normalized = []
-                for s in streams:
-                    normalized.append({
-                        "country":
-                        s.get("country") or s.get("country_name") or "",
-                        "country_code":
-                        s.get("country_code") or s.get("cc") or "",
-                        "stream":
-                        s.get("stream") or s.get("source") or "unknown",
-                        "amount":
-                        float(s.get("amount") or s.get("value") or 0),
-                        "timestamp":
-                        s.get("timestamp") or ""
-                    })
-                total = payload.get("total_income") or sum(x["amount"]
-                                                           for x in normalized)
-                return {
-                    "total_income":
-                    total,
-                    "progress_percent":
-                    float(
-                        payload.get("progress_percent",
-                                    min(100, total / TARGET_AMOUNT * 100))),
-                    "target":
-                    payload.get("target", TARGET_AMOUNT),
-                    "streams":
-                    normalized,
-                    "daily_income":
-                    payload.get("daily_income",
-                                [x["amount"] for x in normalized]),
-                    "dates":
-                    payload.get("dates",
-                                [x["timestamp"][:10] for x in normalized])
-                }
-        if isinstance(payload, list):
-            normalized = []
-            for s in payload:
-                normalized.append({
-                    "country":
-                    s.get("country") or s.get("country_name") or "",
-                    "country_code":
-                    s.get("country_code") or "",
-                    "stream":
-                    s.get("stream") or s.get("source") or "unknown",
-                    "amount":
-                    float(s.get("amount") or s.get("value") or 0),
-                    "timestamp":
-                    s.get("timestamp") or ""
-                })
-            total = sum(x["amount"] for x in normalized)
-            return {
-                "total_income": total,
-                "progress_percent":
-                round(min(100, total / TARGET_AMOUNT * 100), 2),
-                "target": TARGET_AMOUNT,
-                "streams": normalized,
-                "daily_income": [x["amount"] for x in normalized],
-                "dates": [x["timestamp"][:10] for x in normalized]
-            }
-    except Exception as e:
-        print("fetch_income error:", e)
-    # fallback
-    total = sum(s["amount"] for s in SAMPLE_STREAMS)
+        import openai
+        openai.api_key = OPENAI_API_KEY
+        OPENAI_AVAILABLE = True
+    except Exception:
+        OPENAI_AVAILABLE = False
+
+# Config
+APP_DIR = os.path.dirname(__file__)
+REPORTS_DIR = os.path.join(APP_DIR, 'reports')
+STATIC_DIR = os.path.join(APP_DIR, 'static')
+for d in (REPORTS_DIR, STATIC_DIR):
+    if not os.path.exists(d):
+        os.makedirs(d, exist_ok=True)
+
+DEPLOY_TARGET = os.environ.get('DEPLOY_TARGET', 'replit')  # 'replit' or 'production'
+JRAVIS_PASSWORD = os.environ.get('JRAVIS_PASSWORD', 'bosspass')
+USERNAME = 'Boss'
+SECRET_KEY = os.environ.get('SECRET_KEY', 'change_me')
+REPORT_EMAIL = os.environ.get('REPORT_EMAIL')
+
+app = Flask(__name__)
+app.config['JSON_SORT_KEYS'] = False
+app.config['SESSION_PERMANENT'] = False
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=10)
+app.secret_key = SECRET_KEY
+
+# State
+STATE_FILE = os.path.join(APP_DIR, 'jravis_state.json')
+state_lock = threading.Lock()
+
+def default_state():
     return {
-        "total_income": total,
-        "progress_percent": round(min(100, total / TARGET_AMOUNT * 100), 2),
-        "target": TARGET_AMOUNT,
-        "streams": SAMPLE_STREAMS,
-        "daily_income": [s["amount"] for s in SAMPLE_STREAMS],
-        "dates": [s["timestamp"][:10] for s in SAMPLE_STREAMS],
-        "note": "fallback"
+        'phases': {
+            '1': {
+                'name': 'Phase 1 (Fast Kickstart)',
+                'streams': [
+                    {'name': 'Elina Instagram Reels', 'last_run': '', 'status': 'OK', 'amount_today': 0},
+                    {'name': 'Printify POD Store', 'last_run': '', 'status': 'OK', 'amount_today': 0},
+                    {'name': 'Messty AI Store', 'last_run': '', 'status': 'RUNNING', 'amount_today': 0}
+                ],
+                'notes': 'Activate 3 fastest streams and monitor daily.'
+            },
+            '2': {'name': 'Phase 2 (Scale & Automate)', 'streams': [], 'notes': 'Automate operational flows.'},
+            '3': {'name': 'Phase 3 (Passive Systems)', 'streams': [], 'notes': 'Fully passive, legal, and automated.'}
+        },
+        'chat_history': [],
+        'reports': [],
+        'target_monthly': 150000,
+        'monthly_earned': 0,
+        'daily_earned': 0,
+        'status': {'brain': 'ACTIVE', 'last_loop': '', 'api_ok': True}
     }
 
 
-# --------------------
-# Session & auth utilities
-# --------------------
-def login_required(f):
-
-    @wraps(f)
-    def wrapped(*args, **kwargs):
-        if "logged_in" not in session:
-            return redirect(url_for("login"))
-        # auto-logout check
-        last = session.get("last_active", 0)
-        if time.time() - last > AUTO_LOGOUT_SECONDS:
-            session.clear()
-            return redirect(url_for("login"))
-        session["last_active"] = time.time()
-        return f(*args, **kwargs)
-
-    return wrapped
-
-
-@app.route("/favicon.svg")
-def favicon_svg():
-    # serve logo if available
-    if os.path.exists(os.path.join(app.static_folder, "logo.png")):
-        return send_from_directory(app.static_folder, "logo.png")
-    return "", 204
-
-
-# --------------------
-# Login / Logout / Auto Logout
-# --------------------
-@app.route("/login", methods=["GET", "POST"])
-def login():
-    if request.method == "POST":
-        code = request.form.get("code", "")
-        if code == LOCK_CODE:
-            session["logged_in"] = True
-            session["last_active"] = time.time()
-            return redirect(url_for("dashboard"))
-        else:
-            return render_template_string(LOGIN_HTML,
-                                          error="Invalid lock code")
-    return render_template_string(LOGIN_HTML, error=None)
-
-
-@app.route("/logout")
-def logout():
-    session.clear()
-    return redirect(url_for("login"))
-
-
-# --------------------
-# Dashboard page
-# --------------------
-@app.route("/")
-@login_required
-def dashboard():
-    return render_template_string(DASH_HTML,
-                                  logo_url=url_for('favicon_svg'),
-                                  vabot_url=VABOT_URL,
-                                  shared_key=SHARED_KEY)
-
-
-# --------------------
-# API: earnings summary & streams normalized for front-end
-# --------------------
-@app.route("/api/earnings_summary")
-@login_required
-def api_earnings_summary():
-    data = fetch_income()
-    return jsonify(data), 200
-
-
-@app.route("/api/streams")
-@login_required
-def api_streams():
-    data = fetch_income()
-    streams = data.get("streams", [])
-    # ensure country_code exists where possible
-    for s in streams:
-        if not s.get("country_code") and s.get("country"):
-            mapping = {
-                "India": "IN",
-                "United States": "US",
-                "United Kingdom": "GB",
-                "UK": "GB",
-                "Germany": "DE"
-            }
-            s["country_code"] = mapping.get(s["country"], "")
-    return jsonify({
-        "streams": streams,
-        "total_income": data.get("total_income"),
-        "progress_percent": data.get("progress_percent"),
-        "target": data.get("target"),
-        "daily_income": data.get("daily_income"),
-        "dates": data.get("dates")
-    })
-
-
-# --------------------
-# API: per-phase data (clickable tabs)
-# --------------------
-@app.route("/api/phase/<int:n>")
-@login_required
-def api_phase(n):
-    # Simple derived phase logic: Phase1 focuses on debt clearance (50% of target), Phase2 scaling (30%), Phase3 global (20%)
-    data = fetch_income()
-    total = data.get("total_income", 0)
-    if n == 1:
-        target = TARGET_AMOUNT * 0.5
-    elif n == 2:
-        target = TARGET_AMOUNT * 0.3
-    else:
-        target = TARGET_AMOUNT * 0.2
-    percent = round(min(100, total / target * 100), 2) if target > 0 else 0
-    # streams filtered per-phase heuristic (by stream names)
-    streams = [
-        s for s in data.get("streams", [])
-        if "print" in s.get("stream", "").lower() or n == 1
-    ]
-    return jsonify({
-        "phase": n,
-        "phase_target": target,
-        "phase_percent": percent,
-        "phase_streams": streams,
-        "total": total
-    })
-
-
-# --------------------
-# API: send task (for control buttons)
-# --------------------
-@app.route("/api/send_task", methods=["POST"])
-@login_required
-def api_send_task_forward():
-    token = request.headers.get("Authorization", "")
-    if token and token.startswith("Bearer "):
-        key = token.split(" ", 1)[1]
-        if key != SHARED_KEY:
-            return jsonify({"error": "unauthorized"}), 401
-    payload = request.get_json() or {}
-    if not payload.get("action"):
-        return jsonify({"error": "invalid payload"}), 400
-    # forward to VA Bot
+def load_state():
     try:
-        headers = {"Authorization": f"Bearer {SHARED_KEY}"}
-        rv = requests.post(f"{VABOT_URL.rstrip('/')}/api/receive_task",
-                           json=payload,
-                           headers=headers,
-                           timeout=10)
-        return jsonify({
-            "status": "sent",
-            "va_status": rv.status_code,
-            "va_text": rv.text
-        }), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-# --------------------
-# Chat: Dhruvayu (text-only)
-# --------------------
-@app.route("/api/chat", methods=["POST"])
-@login_required
-def api_chat():
-    body = request.get_json() or {}
-    q = (body.get("q") or "").strip()
-    if not q:
-        return jsonify({"reply": "Say something, Boss."})
-    # small rule-based replies for common queries
-    lower = q.lower()
-    data = fetch_income()
-    total = data.get("total_income", 0)
-    if "income" in lower or "total" in lower:
-        reply = f"Boss ⚡ total recorded earnings: ₹{int(total):,}. Progress: {data.get('progress_percent')}%."
-        return jsonify({"reply": reply})
-    if "phase 1" in lower or "phase1" in lower:
-        p = (requests.get(url_for('api_phase', n=1, _external=True),
-                          timeout=5).json())
-        return jsonify({
-            "reply":
-            f"Phase 1 — {p['phase_percent']}% complete, target ₹{int(p['phase_target']):,}."
-        })
-    if "report" in lower or "daily" in lower:
-        return jsonify({
-            "reply":
-            "Daily reports are generated automatically at 10:00 AM IST. I can email them to you if SMTP is configured."
-        })
-    # optional OpenAI fallback if set
-    if OPENAI_API_KEY:
-        try:
-            headers = {"Authorization": f"Bearer {OPENAI_API_KEY}"}
-            payload = {
-                "model": "gpt-4o-mini",
-                "messages": [{
-                    "role": "user",
-                    "content": q
-                }],
-                "max_tokens": 200
-            }
-            r = requests.post("https://api.openai.com/v1/chat/completions",
-                              json=payload,
-                              headers=headers,
-                              timeout=10)
-            rr = r.json()
-            text = rr["choices"][0]["message"]["content"]
-            return jsonify({"reply": text})
-        except Exception as e:
-            print("openai error:", e)
-    # fallback generic
-    return jsonify({
-        "reply":
-        "Got it, Boss. I will summarize and act on that. (Dhruvayu - text mode)"
-    })
-
-
-# --------------------
-# REPORTS generation & email
-# --------------------
-def generate_pdfs_and_save():
-    """Generates summary + invoice PDFs (simple HTML->PDF or fallback text PDFs) and saves in reports folder."""
-    data = fetch_income()
-    total = data.get("total_income", 0)
-    today = datetime.date.today().strftime("%Y-%m-%d")
-    html = f"<h1>JRAVIS Daily Summary {today}</h1><p>Total earnings: ₹{int(total):,}</p><p>Progress: {data.get('progress_percent')}%</p>"
-    # Try pdfkit first (if wkhtmltopdf present)
-    try:
-        import pdfkit
-        out1 = os.path.join(REPORTS_DIR, f"{today}_summary.pdf")
-        pdfkit.from_string(html, out1)
+        with state_lock:
+            if os.path.exists(STATE_FILE):
+                with open(STATE_FILE, 'r', encoding='utf-8') as f:
+                    return json.load(f)
     except Exception:
-        # fallback simple text file
-        out1 = os.path.join(REPORTS_DIR, f"{today}_summary.txt")
-        with open(out1, "w") as f:
-            f.write(
-                f"Summary {today}\nTotal: ₹{int(total):,}\nProgress: {data.get('progress_percent')}%\n"
-            )
-    # invoice
-    invoice_path = os.path.join(REPORTS_DIR, f"{today}_invoice.txt")
-    with open(invoice_path, "w") as inv:
-        inv.write(f"INVOICE {today}\nTotal: ₹{int(total):,}\n")
-    return out1, invoice_path
+        pass
+    return default_state()
 
 
-def send_email_with_attachments(subject, body, attachments):
-    server = os.environ.get("SMTP_SERVER")
-    if not server or not EMAIL_TARGET:
-        print("SMTP or EMAIL_TARGET not configured; skipping email.")
-        return False
-    port = int(os.environ.get("SMTP_PORT", 587))
-    user = os.environ.get("SMTP_USER")
-    pwd = os.environ.get("SMTP_PASS")
+def save_state(s=None):
     try:
-        msg = EmailMessage()
-        msg["Subject"] = subject
-        msg["From"] = user or "jravis@local"
-        msg["To"] = EMAIL_TARGET
-        msg.set_content(body)
-        for p in attachments:
-            with open(p, "rb") as f:
-                data = f.read()
-            msg.add_attachment(data,
-                               maintype="application",
-                               subtype="octet-stream",
-                               filename=os.path.basename(p))
-        with smtplib.SMTP(server, port, timeout=10) as s:
-            s.starttls()
-            if user and pwd:
-                s.login(user, pwd)
-            s.send_message(msg)
-        print("Email sent to", EMAIL_TARGET)
-        return True
+        with state_lock:
+            if s is None:
+                s = app_state
+            with open(STATE_FILE, 'w', encoding='utf-8') as f:
+                json.dump(s, f, indent=2, ensure_ascii=False)
     except Exception as e:
-        print("Email error:", e)
-        return False
+        app.logger.exception('Failed saving state: %s', e)
 
+app_state = load_state()
 
-def daily_and_weekly_scheduler():
-    """Background scheduler thread to run daily at 10:00 IST and weekly Sunday 00:00 UTC."""
-    while True:
-        now_utc = datetime.datetime.utcnow()
-        # Daily at 04:30 UTC = 10:00 IST (approx)
-        if now_utc.hour == 4 and now_utc.minute == 30:
-            try:
-                summary, invoice = generate_pdfs_and_save()
-                send_email_with_attachments("JRAVIS Daily Summary",
-                                            "Daily report attached.",
-                                            [summary, invoice])
-            except Exception as e:
-                print("daily job error:", e)
-            time.sleep(70)  # avoid double-run within same minute
-        # Weekly: Sunday 00:00 UTC
-        if now_utc.weekday(
-        ) == 6 and now_utc.hour == 0 and now_utc.minute == 0:
-            try:
-                summary, invoice = generate_pdfs_and_save()
-                send_email_with_attachments("JRAVIS Weekly Summary",
-                                            "Weekly report attached.",
-                                            [summary, invoice])
-            except Exception as e:
-                print("weekly job error:", e)
-            time.sleep(70)
-        time.sleep(20)
+# Timezones
+IST = ZoneInfo('Asia/Kolkata')
+UTC = timezone.utc
 
+# Report scheduler settings
+REPORT_CHECK_INTERVAL = 30  # seconds between checks
 
-# start scheduler thread
-t = threading.Thread(target=daily_and_weekly_scheduler, daemon=True)
-t.start()
+# Authentication helpers
+@app.before_request
+def auto_logout_check():
+    # Allow static and login endpoints
+    if request.endpoint in ('static', 'login', 'do_login'):
+        return
+    last = session.get('last_active')
+    now_ts = datetime.now(UTC).timestamp()
+    if last and (now_ts - float(last) > 10 * 60):
+        session.clear()
+        flash('Logged out due to inactivity', 'info')
+        return redirect(url_for('login'))
+    if 'user' in session:
+        session['last_active'] = str(now_ts)
 
-# --------------------
-# HTML Templates (embedded)
-# --------------------
-LOGIN_HTML = """
-<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>JRAVIS Login</title>
-<style>
-body{background:#071022;color:#e6eef6;font-family:Inter,Arial,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
-.card{background:rgba(255,255,255,0.03);padding:28px;border-radius:12px;width:320px;text-align:center}
-input[type=password]{width:100%;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);background:transparent;color:inherit}
-button{margin-top:12px;padding:10px 16px;border-radius:8px;border:none;background:linear-gradient(90deg,#00ffff,#00ff7f);color:#042018;font-weight:700;cursor:pointer}
-.err{color:#ffb4b4;margin-top:8px}
-.small{color:#9aa7bf;font-size:12px;margin-top:10px}
-</style></head><body>
-<div class="card">
-<img src="{{ url_for('favicon_svg') }}" width=86 alt="logo" style="border-radius:8px;margin-bottom:10px"/>
-<h2>JRAVIS Secure Access</h2>
-<form method="post">
-<input name="code" type="password" placeholder="Enter Lock Code" required/>
-<button>Unlock</button>
-</form>
-{% if error %}<div class="err">{{ error }}</div>{% endif %}
-<div class="small">Auto-logout after 10 minutes of inactivity</div>
-</div></body></html>
-"""
+def require_login(func):
+    from functools import wraps
+    @wraps(func)
+    def wrapper(*a, **kw):
+        if 'user' not in session:
+            return redirect(url_for('login'))
+        return func(*a, **kw)
+    return wrapper
 
-DASH_HTML = r"""
+# Login routes
+@app.route('/login', methods=['GET'])
+def login():
+    html = r"""
 <!doctype html>
 <html>
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>JRAVIS Dashboard v5 — Phase 1 Global System Status</title>
-<style>
-body{
-  background:#000;
-  color:#00ff99;
-  font-family:"JetBrains Mono","Courier New",monospace;
-  white-space:pre;
-  padding:20px;
-  margin:0;
-}
-h1{color:#0ff;text-align:center;margin:0 0 20px 0;}
-.section{margin-bottom:20px;}
-hr{border:none;border-top:1px solid #033;}
-.box{border:2px solid #033;border-radius:8px;padding:10px;}
-.dim{color:#099;}
-.highlight{color:#0ff;}
-.warn{color:#ff0;}
-.ok{color:#0f0;}
-.fail{color:#f33;}
-.gauge{display:inline-block;width:250px;background:#033;border-radius:5px;overflow:hidden;margin:4px 0;}
-.bar{background:#0ff;height:14px;width:30%;transition:width 1s;}
-</style>
-<script>
-function animateGauge(p){document.querySelector(".bar").style.width=p+"%";}
-window.onload=()=>animateGauge(12);
-</script>
-</head>
+<head><meta name="viewport" content="width=device-width,initial-scale=1"><title>JRAVIS Login</title>
+<style>body{font-family:Inter,Arial;background:#071021;color:#e6f0fb;display:flex;align-items:center;justify-content:center;height:100vh}
+.box{background:rgba(255,255,255,0.03);padding:28px;border-radius:12px;backdrop-filter:blur(6px);width:360px}
+input{width:100%;padding:10px;margin:8px 0;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:#fff}
+button{width:100%;padding:10px;border-radius:8px;border:none;background:#0b72ff;color:white}
+.logo{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.logo img{height:44px}
+</style></head>
 <body>
-
-<h1>JRAVIS DASHBOARD v5 — PHASE 1 GLOBAL SYSTEM STATUS</h1>
 <div class="box">
-│ [🧠 JRAVIS BRAIN] [🤖 VA BOT CONNECTOR] [💰 INCOME BUNDLE] │
-│ Status: ACTIVE  Status: ACTIVE  Status: ACTIVE │
-│ Last Ping: 2 min ago Last Loop: 10:24 AM API: 200 OK │
+  <div class="logo"><img src="/static/logo.png" alt="logo" onerror="this.style.display='none'"><div><strong>JRAVIS</strong><div style="font-size:12px;color:#9fb3d9">Mission 2040</div></div></div>
+  <form method="post" action="/do_login">
+    <input name="username" value="Boss" readonly />
+    <input name="password" type="password" placeholder="Password" />
+    <button type="submit">Login</button>
+  </form>
 </div>
-
-<div class="section">
-AUTOMATION → VA BOT LOOPS
-<hr>
-#  STREAM NAME   LAST RUN  STATUS  RESULT
-1  Elina Reels   10:30 AM ✅ OK  +₹1 250
-2  Printify POD Store 10:28 AM ✅ OK  +₹3 900
-3  Meshy AI Store  10:25 AM ✅ OK  +₹ 450
-4  CAD Crowd Auto Work 10:25 AM ⏳ RUNNING
-5  Fiverr AI Gig Auto 10:24 AM ✅ OK  +₹ 700
-6  YouTube Automation 10:22 AM ✅ OK  +₹1 600
-7  Stock Image/Video 10:21 AM ✅ OK  +₹ 380
-8  KDP AI Publishing 10:19 AM ✅ OK  +₹1 100
-9  Shopify Digital Store 10:18 AM ✅ OK  +₹2 300
-10 Stationery Export 10:17 AM ✅ OK  +₹2 900
-──────────────────────────────────────────────
-TOTAL TODAY: ₹14 280  NEXT LOOP IN: 00:28:45
-</div>
-
-<div class="section">
-INCOME → LIVE FEED
-<hr>
-<div class="gauge"><div class="bar"></div></div> 12% of target  
-Target ₹4 Cr Monthly ₹1.05 L Daily ₹14 280  
-Next Report: Daily 10 AM IST | Weekly Sunday 12 AM IST
-</div>
-
-<div class="section">
-LOG STREAM
-<hr>
-[10:24:10] VA Bot: Loop #1 started  
-[10:24:15] Fiverr automation: success  
-[10:24:18] Meshy API upload: OK  
-[10:24:20] IncomeBundle POST → 200 OK  
-[10:24:21] JRAVIS Dashboard updated successfully
-</div>
-
 </body>
 </html>
-"""
+    """
+    return render_template_string(html)
 
-# --------------------
-# Run
-# --------------------
-if __name__ == "__main__":
-    print(f"[JRAVIS v5] starting on port {PORT}")
-    app.run(host="0.0.0.0", port=PORT)
+@app.route('/do_login', methods=['POST'])
+def do_login():
+    username = request.form.get('username')
+    password = request.form.get('password')
+    if username == USERNAME and password == JRAVIS_PASSWORD:
+        session['user'] = username
+        session['last_active'] = str(datetime.now(UTC).timestamp())
+        return redirect(url_for('index'))
+    flash('Invalid credentials', 'error')
+    return redirect(url_for('login'))
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
+
+# Reporting & email
+
+def make_text_report(now, trigger_reason='scheduled'):
+    filename = now.strftime('%Y-%m-%d_%H-%M-%S_summary.txt')
+    filepath = os.path.join(REPORTS_DIR, filename)
+    with state_lock:
+        phases = app_state.get('phases', {})
+        chat_history = app_state.get('chat_history', [])[-50:]
+        monthly = app_state.get('monthly_earned', 0)
+        daily = app_state.get('daily_earned', 0)
+
+    lines = []
+    lines.append('JRAVIS Summary Report')
+    lines.append('Generated: ' + now.isoformat())
+    lines.append('Trigger: ' + trigger_reason)
+    lines.append('
+--- Phases ---')
+    for pid, pdata in phases.items():
+        lines.append(f"Phase {pid}: {pdata.get('name')}")
+        for s in pdata.get('streams', []):
+            lines.append(f"  - {s.get('name')} | last: {s.get('last_run')} | status: {s.get('status')} | amount: {s.get('amount_today')}")
+    lines.append('
+--- Totals ---')
+    lines.append(f'Monthly earned: {monthly}')
+    lines.append(f'Daily earned: {daily}')
+    lines.append('
+--- Recent Chat ---')
+    for c in chat_history:
+        lines.append(f"[{c.get('ts')}] {c.get('who')}: {c.get('text')}")
+
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write('
+'.join(lines))
+
+    rec = {'id': str(uuid.uuid4()), 'filename': filename, 'path': filepath, 'generated_at': now.isoformat(), 'trigger': trigger_reason}
+    with state_lock:
+        app_state.setdefault('reports', []).append(rec)
+        save_state()
+    return rec
+
+
+def make_pdf_report(now, text_path, title_override=None):
+    if not REPORTLAB_AVAILABLE:
+        return None
+    pdf_name = now.strftime('%Y-%m-%d_%H-%M-%S_summary.pdf')
+    pdf_path = os.path.join(REPORTS_DIR, pdf_name)
+    try:
+        c = canvas.Canvas(pdf_path, pagesize=letter)
+        with open(text_path, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        y = 750
+        if title_override:
+            c.setFont('Helvetica-Bold', 14)
+            c.drawString(40, y, title_override)
+            y -= 24
+        c.setFont('Helvetica', 10)
+        for line in lines:
+            c.drawString(40, y, line.strip())
+            y -= 12
+            if y < 40:
+                c.showPage(); y = 750
+        c.save()
+        return pdf_path
+    except Exception:
+        app.logger.exception('PDF creation failed')
+        return None
+
+
+def send_email(to_email, subject, body, attachments=None):
+    smtp_host = os.environ.get('SMTP_HOST')
+    if not smtp_host:
+        app.logger.info('SMTP not configured, skipping email send')
+        return False
+    smtp_port = int(os.environ.get('SMTP_PORT', 587))
+    smtp_user = os.environ.get('SMTP_USER')
+    smtp_pass = os.environ.get('SMTP_PASS')
+    msg = EmailMessage()
+    msg['From'] = smtp_user or 'jravis@localhost'
+    msg['To'] = to_email
+    msg['Subject'] = subject
+    msg.set_content(body)
+    for p in (attachments or []):
+        try:
+            with open(p, 'rb') as fh:
+                data = fh.read()
+            msg.add_attachment(data, maintype='application', subtype='octet-stream', filename=os.path.basename(p))
+        except Exception:
+            app.logger.exception('Failed attaching %s', p)
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port) as s:
+            s.starttls()
+            if smtp_user and smtp_pass:
+                s.login(smtp_user, smtp_pass)
+            s.send_message(msg)
+        return True
+    except Exception:
+        app.logger.exception('Email send failed')
+        return False
+
+# Scheduler
+stop_event = threading.Event()
+
+def report_scheduler(stop_event):
+    # checks every REPORT_CHECK_INTERVAL seconds for daily 10:00 IST and weekly Sunday 00:00 UTC
+    last_daily = None
+    last_weekly = None
+    while not stop_event.is_set():
+        now_utc = datetime.now(UTC)
+        now_ist = now_utc.astimezone(IST)
+        # Daily at 10:00 IST (run once per day)
+        if now_ist.hour == 10 and now_ist.minute == 0:
+            day_key = now_ist.date().isoformat()
+            if day_key != last_daily:
+                try:
+                    rec = make_text_report(now_utc, trigger_reason='daily_10_IST')
+                    if REPORTLAB_AVAILABLE:
+                        pdf = make_pdf_report(now_utc, rec['path'])
+                    if REPORT_EMAIL:
+                        attachments = [pdf] if (REPORTLAB_AVAILABLE and pdf) else [rec['path']]
+                        send_email(REPORT_EMAIL, 'JRAVIS Daily Report', 'Attached daily report', attachments=attachments)
+                except Exception:
+                    app.logger.exception('Daily report error')
+                last_daily = day_key
+        # Weekly Sunday 00:00 UTC
+        if now_utc.weekday() == 6 and now_utc.hour == 0 and now_utc.minute == 0:
+            week_key = now_utc.isocalendar()[1]
+            if week_key != last_weekly:
+                try:
+                    rec = make_text_report(now_utc, trigger_reason='weekly_sun_00_UTC')
+                    if REPORTLAB_AVAILABLE:
+                        pdf = make_pdf_report(now_utc, rec['path'], title_override='Weekly JRAVIS Summary')
+                    if REPORT_EMAIL:
+                        attachments = [pdf] if (REPORTLAB_AVAILABLE and pdf) else [rec['path']]
+                        send_email(REPORT_EMAIL, 'JRAVIS Weekly Report', 'Attached weekly report', attachments=attachments)
+                except Exception:
+                    app.logger.exception('Weekly report error')
+                last_weekly = week_key
+        for _ in range(int(REPORT_CHECK_INTERVAL)):
+            if stop_event.is_set():
+                break
+            time.sleep(1)
+
+worker_thread = threading.Thread(target=report_scheduler, args=(stop_event,), daemon=True)
+worker_thread.start()
+
+@atexit.register
+def _shutdown():
+    stop_event.set()
+    save_state()
+
+# API & UI
+@app.route('/api/state')
+@require_login
+def api_state():
+    return jsonify(app_state)
+
+@app.route('/api/phase/<phase_id>', methods=['POST'])
+@require_login
+def api_update_phase(phase_id):
+    payload = request.get_json() or {}
+    with state_lock:
+        phases = app_state.setdefault('phases', {})
+        if phase_id not in phases:
+            phases[phase_id] = {'name': payload.get('name', f'Phase {phase_id}'), 'streams': [], 'notes': ''}
+        phases[phase_id]['name'] = payload.get('name', phases[phase_id].get('name'))
+        phases[phase_id]['notes'] = payload.get('notes', phases[phase_id].get('notes'))
+        phases[phase_id]['streams'] = payload.get('streams', phases[phase_id].get('streams', []))
+        save_state()
+    return jsonify({'ok': True, 'phase': phases[phase_id]})
+
+@app.route('/api/chat', methods=['POST'])
+@require_login
+def api_chat():
+    data = request.get_json() or {}
+    text = data.get('text', '').strip()
+    if not text:
+        return jsonify({'error': 'empty'}), 400
+    now = datetime.now(UTC).isoformat()
+    msg = {'who': 'Boss', 'text': text, 'ts': now}
+    with state_lock:
+        app_state.setdefault('chat_history', []).append(msg)
+        reply_text = f'Logged: "{text}". I will prepare next steps.'
+        if OPENAI_AVAILABLE:
+            try:
+                resp = openai.ChatCompletion.create(model='gpt-4o-mini', messages=[{'role':'user','content':text}], max_tokens=150)
+                reply_text = resp.choices[0].message.content.strip()
+            except Exception:
+                app.logger.exception('OpenAI reply failed')
+        reply = {'who': 'Dhruvayu', 'text': reply_text, 'ts': datetime.now(UTC).isoformat()}
+        app_state['chat_history'].append(reply)
+        save_state()
+    return jsonify({'ok': True})
+
+@app.route('/api/generate_report', methods=['POST'])
+@require_login
+def api_generate_report():
+    rec = make_text_report(datetime.now(UTC), trigger_reason='manual')
+    return jsonify(rec)
+
+@app.route('/reports/<path:filename>')
+@require_login
+def serve_report(filename):
+    return send_from_directory(REPORTS_DIR, filename, as_attachment=True)
+
+@app.route('/api/shutdown', methods=['POST'])
+@require_login
+def api_shutdown():
+    stop_event.set()
+    save_state()
+    func = request.environ.get('werkzeug.server.shutdown')
+    if func:
+        func()
+        return jsonify({'ok': True, 'msg': 'shutting down'})
+    else:
+        return jsonify({'error': 'not running with werkzeug'}), 500
+
+# Main UI
+@app.route('/')
+@require_login
+def index():
+    html = r"""
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>JRAVIS Dashboard v5 Ultimate</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root{--bg:#071021;--card:rgba(255,255,255,0.04);--glass:rgba(255,255,255,0.03);--accent:#0b72ff;--muted:#93a6c4}
+    body{margin:0;font-family:Inter,Arial,system-ui;background:linear-gradient(180deg,#031023 0%, #07121d 100%);color:#e6f0fb}
+    header{display:flex;align-items:center;justify-content:space-between;padding:14px 20px}
+    .brand{display:flex;align-items:center;gap:12px}
+    .logo img{height:48px}
+    .top-controls{display:flex;gap:10px;align-items:center}
+    .btn{background:var(--accent);border:none;padding:8px 12px;border-radius:10px;color:white;cursor:pointer}
+    .container{max-width:1200px;margin:10px auto;padding:12px}
+    .grid{display:grid;grid-template-columns:1fr 420px;gap:16px}
+    .card{background:var(--card);padding:14px;border-radius:12px;box-shadow:0 8px 20px rgba(2,6,23,0.6)}
+    .tabs{display:flex;gap:8px}
+    .tab{padding:8px 10px;border-radius:8px;background:transparent;border:1px solid rgba(255,255,255,0.03);cursor:pointer}
+    .tab.active{background:linear-gradient(180deg, rgba(11,114,255,0.14), rgba(11,114,255,0.06));box-shadow:inset 0 -2px 0 rgba(11,114,255,0.25)}
+    table{width:100%;border-collapse:collapse;color:#dfefff}
+    td,th{padding:8px;text-align:left;border-bottom:1px solid rgba(255,255,255,0.02)}
+    .progress{height:12px;background:rgba(255,255,255,0.04);border-radius:8px;overflow:hidden}
+    .progress > i{display:block;height:100%}
+    #map{height:220px;border-radius:8px}
+
+    @media(max-width:980px){.grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand"><div class="logo"><img src="/static/logo.png" onerror="this.style.display='none'"></div><div><strong>JRAVIS</strong><div style="font-size:12px;color:var(--muted)">Phase 1 Global System Status</div></div></div>
+    <div class="top-controls">
+      <div style="text-align:right;color:var(--muted);font-size:13px">Status: <strong id="brainStatus">ACTIVE</strong><br/><span id="lastLoop">Last Loop: --</span></div>
+      <button class="btn" onclick="location.href='/logout'">Logout</button>
+    </div>
+  </header>
+  <div class="container">
+    <div class="grid">
+      <div>
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <div style="font-weight:700">Phases</div>
+            <div class="tabs" id="phaseTabs"></div>
+          </div>
+          <div id="phaseContent"></div>
+        </div>
+
+        <div style="height:12px"></div>
+
+        <div class="card" style="margin-top:12px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <div style="font-weight:700">Charts & Map</div>
+            <div style="font-size:12px;color:var(--muted)">Live</div>
+          </div>
+          <canvas id="incomeChart" height="120"></canvas>
+          <div style="height:12px"></div>
+          <div id="map"></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="card">
+          <div style="font-weight:700;margin-bottom:8px">Summary</div>
+          <div id="summaryTop"></div>
+          <div style="height:12px"></div>
+          <div style="font-weight:700;margin-bottom:8px">Recent Reports</div>
+          <div id="reportsList">Loading...</div>
+        </div>
+
+        <div style="height:12px"></div>
+
+        <div class="card">
+          <div style="font-weight:700;margin-bottom:8px">Dhruvayu Chat</div>
+          <div id="chatBox" style="height:270px;overflow:auto;padding:6px;background:rgba(0,0,0,0.15);border-radius:8px;color:#dff;">
+          </div>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <input id="chatInput" placeholder="How can I assist?" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:#fff" />
+            <button class="btn" onclick="sendChat()">Send</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+<script>
+let activePhase = '1';
+async function api(path, opts){ const r = await fetch(path, opts); if(r.headers.get('content-type')?.includes('application/json')) return r.json(); return r.text(); }
+function renderPhaseTabs(phases){ const el = document.getElementById('phaseTabs'); el.innerHTML=''; Object.keys(phases).forEach(pid=>{ const btn = document.createElement('button'); btn.className='tab'+(pid===activePhase?' active':''); btn.textContent='P'+pid; btn.onclick=()=>{ activePhase=pid; renderPhase(phases[pid], pid); renderPhaseTabs(phases); }; el.appendChild(btn); }); }
+function renderPhase(data, pid){ const c = document.getElementById('phaseContent'); c.innerHTML=''; const title = document.createElement('div'); title.style.fontWeight='700'; title.textContent = data.name; c.appendChild(title); const tbl = document.createElement('table'); const thead = document.createElement('thead'); thead.innerHTML='<tr><th>#</th><th>Stream</th><th>Last Run</th><th>Status</th><th>Amount</th></tr>'; tbl.appendChild(thead); const tbody = document.createElement('tbody'); (data.streams||[]).forEach((s,i)=>{ const tr=document.createElement('tr'); tr.innerHTML=`<td>${i+1}</td><td>${s.name||s}</td><td>${s.last_run||'--'}</td><td>${s.status||''}</td><td>${s.amount_today||0}</td>`; tbody.appendChild(tr); }); tbl.appendChild(tbody); c.appendChild(tbl); const edit = document.createElement('button'); edit.className='btn'; edit.style.marginTop='8px'; edit.textContent='Edit Phase'; edit.onclick=()=>editPhase(pid,data); c.appendChild(edit); }
+function editPhase(pid,data){ const newName = prompt('Phase name', data.name)||data.name; const newNotes = prompt('Phase notes', data.notes||'')||data.notes||''; const streamsText = (data.streams||[]).map(s=>s.name||s).join(', '); const newStreams = prompt('Comma-separated stream names', streamsText)||streamsText; const payload = {name:newName,notes:newNotes,streams:newStreams.split(',').map(s=>({name:s.trim(),last_run:'',status:'OK',amount_today:0}))}; fetch('/api/phase/'+pid, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}).then(()=>loadState()); }
+async function loadState(){ const s = await api('/api/state'); renderPhaseTabs(s.phases); renderPhase(s.phases[activePhase],activePhase); renderSummary(s); renderReports(s.reports||[]); renderChat(s.chat_history||[]); }
+function renderSummary(s){ document.getElementById('brainStatus').textContent = s.status?.brain || 'OK'; document.getElementById('lastLoop').textContent = 'Last Loop: ' + (s.status?.last_loop||'--'); const out = document.getElementById('summaryTop'); out.innerHTML = `<div>Monthly Target: ₹${s.target_monthly||0}</div><div>Monthly Earned: ₹${s.monthly_earned||0}</div><div>Daily Earned: ₹${s.daily_earned||0}</div><div style="margin-top:8px"><div class="progress"><i style="width:${Math.min(100,((s.monthly_earned||0)/ (s.target_monthly||1))*100)}%;background:linear-gradient(90deg,#0b72ff,#00d4ff)"></i></div></div>` }
+function renderReports(reports){ const el = document.getElementById('reportsList'); el.innerHTML=''; (reports||[]).slice().reverse().forEach(r=>{ const a=document.createElement('a'); a.href='/reports/'+r.filename; a.textContent=r.filename; a.style.display='block'; el.appendChild(a); }); }
+function renderChat(messages){ const box=document.getElementById('chatBox'); box.innerHTML=''; (messages||[]).forEach(m=>{ const d=document.createElement('div'); d.style.margin='6px 0'; d.innerHTML=`<strong>${m.who}</strong> <span style='color:#99b3d6;font-size:12px'>${new Date(m.ts).toLocaleString()}</span><div>${m.text}</div>`; box.appendChild(d); }); box.scrollTop=box.scrollHeight; }
+async function sendChat(){ const input=document.getElementById('chatInput'); const text=input.value.trim(); if(!text) return; input.value=''; await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})}); await loadState(); }
+let incomeChart=null; function initChart(){ const ctx=document.getElementById('incomeChart').getContext('2d'); incomeChart = new Chart(ctx, {type:'line',data:{labels:[],datasets:[{label:'Daily',data:[],fill:true}]},options:{responsive:true}}); }
+function initMap(){ try{ const map = L.map('map').setView([20,0],2); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:8}).addTo(map); L.marker([20,77]).addTo(map).bindPopup('HQ').openPopup(); }catch(e){console.warn('Leaflet init failed',e);} }
+window.onload = function(){ initChart(); initMap(); loadState(); setInterval(loadState,8000); }
+</script>
+</body>
+</html>
+    """
+    return render_template_string(html)
+
+if __name__ == '__main__':
+    if DEPLOY_TARGET == 'replit':
+        print('Running in Replit mode. If you see xml/pyexpat errors, downgrade pip: pip install --upgrade pip==24.2')
+    else:
+        print('Running in production mode. Use gunicorn for best results.')
+    print('Starting JRAVIS Dashboard v5 Ultimate on port 10000')
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 10000)), debug=(DEPLOY_TARGET=='replit'))

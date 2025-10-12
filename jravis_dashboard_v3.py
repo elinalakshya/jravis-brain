@@ -8,9 +8,8 @@ jravis_dashboard_v3.py
 Save/overwrite your existing jravis_dashboard_v3.py with this file.
 """
 
-from flask import (
-    Flask, request, render_template_string, jsonify, redirect, url_for, session
-)
+from flask import (Flask, request, render_template_string, jsonify, redirect,
+                   url_for, session)
 import os, requests, datetime, json, time, random
 
 app = Flask(__name__)
@@ -18,7 +17,8 @@ app.secret_key = os.environ.get("SECRET_KEY", "jravis_secret_key_fallback")
 
 # Config (from env)
 LOCK_CODE = os.environ.get("LOCK_CODE", "2040")
-VABOT_URL = os.environ.get("VABOT_URL", "").rstrip("/")  # e.g. https://vabot-dashboard.onrender.com
+VABOT_URL = os.environ.get("VABOT_URL", "").rstrip(
+    "/")  # e.g. https://vabot-dashboard.onrender.com
 VABOT_API_KEY = os.environ.get("VABOT_API_KEY", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", None)
 
@@ -31,11 +31,14 @@ DEFAULT_EARNINGS_USD = int(os.environ.get("DEFAULT_EARNINGS_USD", "8250"))
 # Basic phase structure (used as fallback if VA Bot not reachable)
 PHASES = {
     "Phase 1": {
-        "label": "Phase 1 — Fast Kickstart",
-        "target_tag": "Clear short term debt",
+        "label":
+        "Phase 1 — Fast Kickstart",
+        "target_tag":
+        "Clear short term debt",
         "streams": [
             "ElinaInstagramReels", "Printify", "MeshyAI", "CadCrowd", "Fiverr",
-            "YouTube", "StockImageVideo", "AIBookPublishingKDP", "ShopifyDigitalProducts", "StationeryExport"
+            "YouTube", "StockImageVideo", "AIBookPublishingKDP",
+            "ShopifyDigitalProducts", "StationeryExport"
         ],
     },
     "Phase 2": {
@@ -57,9 +60,12 @@ for ph in PHASES.values():
     for s in ph["streams"]:
         _LOCAL_STATUSES[s] = random.choice(_status_choices)
 
-CHAT_HISTORY = [
-    {"who": "jravis", "msg": "JRAVIS online — ask about streams, earnings, or run commands.", "ts": time.time()}
-]
+CHAT_HISTORY = [{
+    "who": "jravis",
+    "msg": "JRAVIS online — ask about streams, earnings, or run commands.",
+    "ts": time.time()
+}]
+
 
 # ---------------------------
 # Helper: VA Bot API wrappers
@@ -70,25 +76,33 @@ def _vabot_headers():
         h["Authorization"] = f"Bearer {VABOT_API_KEY}"
     return h
 
+
 def vabot_get(path, params=None):
     """GET VABOT_URL + path (path must start with /). Returns dict or {'error':msg}"""
     if not VABOT_URL:
         return {"error": "VABOT_URL not configured"}
     try:
         url = f"{VABOT_URL}{path}"
-        r = requests.get(url, headers=_vabot_headers(), params=params, timeout=8)
+        r = requests.get(url,
+                         headers=_vabot_headers(),
+                         params=params,
+                         timeout=8)
         if r.status_code >= 400:
             return {"error": f"status {r.status_code}", "details": r.text}
         return r.json()
     except Exception as e:
         return {"error": str(e)}
 
+
 def vabot_post(path, payload=None):
     if not VABOT_URL:
         return {"error": "VABOT_URL not configured"}
     try:
         url = f"{VABOT_URL}{path}"
-        r = requests.post(url, headers=_vabot_headers(), json=payload or {}, timeout=12)
+        r = requests.post(url,
+                          headers=_vabot_headers(),
+                          json=payload or {},
+                          timeout=12)
         if r.status_code >= 400:
             return {"error": f"status {r.status_code}", "details": r.text}
         # accept json or text
@@ -98,6 +112,7 @@ def vabot_post(path, payload=None):
             return {"ok": True, "text": r.text}
     except Exception as e:
         return {"error": str(e)}
+
 
 # ---------------------------
 # Chat: local Dhruvayu-style layer (fallback) and optional OpenAI
@@ -126,10 +141,12 @@ def dhruvayu_local_reply(user_msg):
                 return f"{s}: {st} — Suggestion: check the API key, re-run the job, and review logs."
             return f"{s}: {st}"
     # default
-    running = sum(1 for v in _LOCAL_STATUSES.values() if "running" in v.lower())
+    running = sum(1 for v in _LOCAL_STATUSES.values()
+                  if "running" in v.lower())
     errors = sum(1 for v in _LOCAL_STATUSES.values() if "error" in v.lower())
     idle = sum(1 for v in _LOCAL_STATUSES.values() if "idle" in v.lower())
     return f"Streams summary — {running} running, {idle} idle, {errors} errors."
+
 
 # Optional OpenAI usage (if key provided)
 def openai_reply(user_msg):
@@ -142,24 +159,37 @@ def openai_reply(user_msg):
             "Content-Type": "application/json"
         }
         payload = {
-            "model": "gpt-4o-mini",  # safe default; adjust if you have different model access
-            "messages": [
-                {"role": "system", "content": "You are JRAVIS. Answer concisely and respectfully, call the user 'Boss'."},
-                {"role": "user", "content": user_msg}
-            ],
-            "temperature": 0.7,
-            "max_tokens": 250
+            "model":
+            "gpt-4o-mini",  # safe default; adjust if you have different model access
+            "messages": [{
+                "role":
+                "system",
+                "content":
+                "You are JRAVIS. Answer concisely and respectfully, call the user 'Boss'."
+            }, {
+                "role": "user",
+                "content": user_msg
+            }],
+            "temperature":
+            0.7,
+            "max_tokens":
+            250
         }
-        resp = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=12)
+        resp = requests.post("https://api.openai.com/v1/chat/completions",
+                             headers=headers,
+                             json=payload,
+                             timeout=12)
         if resp.status_code != 200:
             return None
         js = resp.json()
-        txt = js.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+        txt = js.get("choices", [{}])[0].get("message", {}).get("content",
+                                                                "").strip()
         if txt:
             return txt
         return None
     except Exception:
         return None
+
 
 # ---------------------------
 # Templates (dark glass UI)
@@ -407,6 +437,7 @@ setInterval(refreshAll, AUTO_REFRESH_SECONDS * 1000);
 </html>
 """
 
+
 # ---------------------------
 # Routes
 # ---------------------------
@@ -434,12 +465,15 @@ def login():
     <input name="code" type="password" placeholder="Lock code" autofocus><button>Unlock</button></form></body></html>
     """)
 
+
 @app.route("/main")
 def main():
     if not session.get("auth"):
         return redirect(url_for("login"))
     # attempt to get summary from VA Bot
-    summary = vabot_get("/api/summary") if VABOT_URL else {"error": "not configured"}
+    summary = vabot_get("/api/summary") if VABOT_URL else {
+        "error": "not configured"
+    }
     if summary and "error" not in summary:
         earn_inr = int(summary.get("earn_inr", DEFAULT_EARNINGS_INR))
         earn_usd = int(summary.get("earn_usd", DEFAULT_EARNINGS_USD))
@@ -448,15 +482,14 @@ def main():
         earn_usd = DEFAULT_EARNINGS_USD
 
     progress_percent = min(100, int((earn_inr / max(1, MISSION_TARGET)) * 100))
-    return render_template_string(
-        MAIN_HTML,
-        earn_inr_fmt=f"{earn_inr:,}",
-        earn_usd_fmt=f"{earn_usd:,}",
-        progress_percent=progress_percent,
-        target_fmt=f"{MISSION_TARGET:,}",
-        phases=PHASES,
-        phases_json=PHASES
-    )
+    return render_template_string(MAIN_HTML,
+                                  earn_inr_fmt=f"{earn_inr:,}",
+                                  earn_usd_fmt=f"{earn_usd:,}",
+                                  progress_percent=progress_percent,
+                                  target_fmt=f"{MISSION_TARGET:,}",
+                                  phases=PHASES,
+                                  phases_json=PHASES)
+
 
 @app.route("/api/streams")
 def api_streams():
@@ -471,8 +504,12 @@ def api_streams():
         if "error" not in resp and isinstance(resp.get("streams", None), list):
             return jsonify(resp)
         # fallback to local statuses if VA Bot returns error
-    streams = [{"name": s, "status": _LOCAL_STATUSES.get(s, "Unknown")} for s in PHASES.get(phase, {}).get("streams", [])]
+    streams = [{
+        "name": s,
+        "status": _LOCAL_STATUSES.get(s, "Unknown")
+    } for s in PHASES.get(phase, {}).get("streams", [])]
     return jsonify({"streams": streams})
+
 
 @app.route("/api/summary")
 def api_summary():
@@ -485,18 +522,28 @@ def api_summary():
             usd = int(resp.get("earn_usd", DEFAULT_EARNINGS_USD))
             progress_pct = min(100, int((earn / max(1, MISSION_TARGET)) * 100))
             return jsonify({
-                "earn_inr": earn, "earn_usd": usd,
-                "earn_inr_fmt": f"{earn:,}", "earn_usd_fmt": f"{usd:,}",
+                "earn_inr": earn,
+                "earn_usd": usd,
+                "earn_inr_fmt": f"{earn:,}",
+                "earn_usd_fmt": f"{usd:,}",
                 "progress_percent": progress_pct
             })
         # fallback
     earn = DEFAULT_EARNINGS_INR
     usd = DEFAULT_EARNINGS_USD
     return jsonify({
-        "earn_inr": earn, "earn_usd": usd,
-        "earn_inr_fmt": f"{earn:,}", "earn_usd_fmt": f"{usd:,}",
-        "progress_percent": min(100, int((earn / max(1, MISSION_TARGET)) * 100))
+        "earn_inr":
+        earn,
+        "earn_usd":
+        usd,
+        "earn_inr_fmt":
+        f"{earn:,}",
+        "earn_usd_fmt":
+        f"{usd:,}",
+        "progress_percent":
+        min(100, int((earn / max(1, MISSION_TARGET)) * 100))
     })
+
 
 @app.route("/chat", methods=["POST"])
 def chat():
@@ -518,7 +565,11 @@ def chat():
             resp = vabot_post("/api/chat", {"message": user_msg})
             if isinstance(resp, dict) and "reply" in resp:
                 reply_text = resp.get("reply")
-                CHAT_HISTORY.append({"who": "jravis", "msg": reply_text, "ts": time.time()})
+                CHAT_HISTORY.append({
+                    "who": "jravis",
+                    "msg": reply_text,
+                    "ts": time.time()
+                })
                 return jsonify({"reply": reply_text})
         except Exception:
             pass
@@ -534,6 +585,7 @@ def chat():
     CHAT_HISTORY.append({"who": "jravis", "msg": reply, "ts": time.time()})
     return jsonify({"reply": reply})
 
+
 @app.route("/chat/history")
 def chat_history():
     if not session.get("auth"):
@@ -544,15 +596,18 @@ def chat_history():
         out.append({"who": x["who"], "msg": x["msg"]})
     return jsonify(out)
 
+
 @app.route("/health")
 def health():
-    return jsonify({"status": "JRAVIS online", "time": datetime.datetime.now().isoformat()})
+    return jsonify({
+        "status": "JRAVIS online",
+        "time": datetime.datetime.now().isoformat()
+    })
+
 
 # ---------------------------
 # Run
 # ---------------------------
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", "10000"))
-    print(f"⚙️ JRAVIS Dashboard v3 (dark) starting on port {port}")
-    # When running on Render, Flask dev server is fine for this project.
-    app.run(host="0.0.0.0", port=port)
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port)
