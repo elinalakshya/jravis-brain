@@ -57,3 +57,15 @@ reportlab
 openai
 gunicorn
 
+flask
+python-dotenv
+reportlab
+openai
+gunicorn
+apscheduler
+pdfkit
+playwright
+pytz
+pyyaml
+rich
+
