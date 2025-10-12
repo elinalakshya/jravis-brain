@@ -279,7 +279,6 @@ body{margin:0;font-family:Inter, Arial, sans-serif;background:linear-gradient(18
 </body></html>
 """
 
-<!-- 💰 Mission 2040 Earnings Progress Widget -->
 <div class="card glass-card" style="padding:20px; border-radius:20px; text-align:center;">
   <h2>💰 Mission 2040 Progress</h2>
   <div id="income-total" style="font-size:1.4rem; margin:10px 0;">Loading...</div>
