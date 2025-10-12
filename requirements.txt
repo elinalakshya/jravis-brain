@@ -69,3 +69,14 @@ pytz
 pyyaml
 rich
 
+flask
+python-dotenv
+reportlab
+openai
+gunicorn
+apscheduler
+pdfkit
+playwright
+pytz
+pyyaml
+rich
