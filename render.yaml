@@ -12,14 +12,7 @@ services:
       value: "1"
     - key: PYTHONUNBUFFERED
       value: "1"
-    - key: PLAYWRIGHT_BROWSERS_PATH
-      value: /usr/local/share/playwright-browsers
     - key: PORT
-      value: 10000
-
-services:
-- type: web
-  name: jravis-dashboard-v5
-  env: docker
-  plan: free
-  dockerfilePath: ./Dockerfile
+      value: "10000"
+    - key: LOCK_CODE
+      value: ""   # set your lock code here if needed

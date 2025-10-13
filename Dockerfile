@@ -1,30 +1,24 @@
-# Use Python 3.10
-FROM python:3.10-slim
-
-WORKDIR /app
-COPY . .
-
-RUN pip install --no-cache-dir -r requirements.txt
-
-EXPOSE 8080
-CMD ["python", "main.py"]
-
-# ---- Base image ----
+# Dockerfile - deterministic build with Python 3.12 slim
 FROM python:3.12-slim
 
-# ---- System dependencies ----
-RUN apt-get update && apt-get install -y \
-    wkhtmltopdf curl git \
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PORT=10000
+WORKDIR /app
+
+# system deps
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    wkhtmltopdf ca-certificates curl build-essential \
  && rm -rf /var/lib/apt/lists/*
 
-# ---- App setup ----
-WORKDIR /app
+# copy app
 COPY . /app
 
-RUN pip install --upgrade pip setuptools wheel
-RUN pip install -r requirements.txt
-RUN python -m playwright install --with-deps chromium
+# pip
+RUN python -m pip install --upgrade pip setuptools wheel
+RUN python -m pip install -r requirements.txt
 
-# ---- Runtime ----
-ENV PORT=10000
+# optional playwright browsers (if playwright used)
+RUN python -m playwright install --with-deps chromium || true
+
+EXPOSE 10000
 CMD ["gunicorn", "jravis_dashboard_v5:app", "--bind", "0.0.0.0:10000"]
