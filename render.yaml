@@ -1,25 +1,18 @@
 services:
 - type: web
-  name: jravis-brain
+  name: jravis-dashboard-v5
   env: python
+  buildCommand: bash render-build.sh
+  startCommand: gunicorn jravis_dashboard_v5:app --bind 0.0.0.0:$PORT
   plan: free
-  buildCommand: pip install -r requirements.txt
-  startCommand: python main.py
-
-
-services:
-- type: worker
-  name: va-bot
-  env: python
-  plan: free
-  startCommand: python main.py
-  autoDeploy: true
   envVars:
-    - key: JARVIS_SECRET
-      value: MY OG
-    - key: OPENAI_API_KEY
-      sync: false
-    - key: VA_EMAIL
-      sync: false
-    - key: VA_EMAIL_PASS
-      sync: false
+    - key: PYTHON_VERSION
+      value: 3.12.7
+    - key: PIP_NO_CACHE_DIR
+      value: "1"
+    - key: PYTHONUNBUFFERED
+      value: "1"
+    - key: PLAYWRIGHT_BROWSERS_PATH
+      value: /usr/local/share/playwright-browsers
+    - key: PORT
+      value: 10000
