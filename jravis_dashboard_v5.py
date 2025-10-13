@@ -195,7 +195,7 @@ async function updateProgress(){
 }
 
 # JavaScript section inside your HTML builder
-lines.append("""
+lines.append
 <script>
 async function refreshLogs(){
   try{
@@ -239,8 +239,6 @@ async function sendCmd(){
   document.getElementById('chat-input').value = '';
 }
 </script>
-""")
-
 
 // initial
 showPhase(1);
