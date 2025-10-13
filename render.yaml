@@ -16,3 +16,10 @@ services:
       value: /usr/local/share/playwright-browsers
     - key: PORT
       value: 10000
+
+services:
+- type: web
+  name: jravis-dashboard-v5
+  env: docker
+  plan: free
+  dockerfilePath: ./Dockerfile
