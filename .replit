@@ -15,4 +15,4 @@ localPort = 10000
 externalPort = 3000
 
 [nix]
-packages = ["cairo", "ffmpeg-full", "freetype", "ghostscript", "gitFull", "glibcLocales", "gobject-introspection", "gtk3", "libyaml", "nano", "pkg-config", "playwright-driver", "qhull", "tcl", "tk", "mailutils"]
+packages = ["cairo", "ffmpeg-full", "freetype", "ghostscript", "gitFull", "glibcLocales", "gobject-introspection", "gtk3", "libyaml", "mailutils", "nano", "pkg-config", "playwright-driver", "qhull", "tcl", "tk"]

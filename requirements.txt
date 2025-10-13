@@ -9,3 +9,14 @@ playwright
 pytz
 pyyaml
 rich
+
+Flask
+Fla
+Flask-Cors
+Flask-Limiter
+APScheduler
+PyPDF2
+pdfkit
+pytz
+gunicorn
+requests

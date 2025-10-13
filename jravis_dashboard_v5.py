@@ -1,543 +1,393 @@
-"""
-JRAVIS Dashboard v5 — Unified Deploy File
-This single file supports two deployment modes controlled by the environment variable
-  DEPLOY_TARGET = 'replit' | 'production'
+# jravis_dashboard_v5.py
+# Replit-ready JRAVIS Dashboard v5 (dark UI, Phase tabs, chatbox, live logs)
+# Requirements: Flask, requests
+# Put this file in your Replit root. Ensure env secrets set:
+# SHARED_KEY, BRIDGE_URL, VABOT_URL, STREAMS_FILE, LOCK_CODE, TZ
 
-- Replit mode: friendly to Replit/Nix quirks (prints pip-downgrade hint). Uses local storage (reports/, static/)
-- Production mode: tuned for running behind Gunicorn (cleaner logs)
+from flask import Flask, request, jsonify, render_template_string, redirect, url_for, session
+import os, json, requests, datetime
 
-Features:
-- Login (user: Boss) + hidden password via JRAVIS_PASSWORD env var
-- Auto-logout after 10 minutes inactivity
-- Phase tabs (editable), streams, progress bars
-- Dhruvayu chat with optional OpenAI fallback (OPENAI_API_KEY)
-- Daily (10:00 IST) & Weekly (Sun 00:00 UTC) reports; optional PDF (reportlab) and optional SMTP email
-- Chart.js + Leaflet map + static/logo.png
+# ----------- Configuration (from env) -------------
+SHARED_KEY = os.getenv("SHARED_KEY", "JRAVIS_MASTER_KEY")
+BRIDGE_URL = os.getenv("BRIDGE_URL", "http://localhost:6000")
+VABOT_URL = os.getenv("VABOT_URL", "http://localhost:8000")
+STREAMS_FILE = os.getenv("STREAMS_FILE", "streams_config.json")
+LOCK_CODE = os.getenv("LOCK_CODE", "0000")
+TZ = os.getenv("TZ", "Asia/Kolkata")
+LOG_FILE = os.getenv("UNIFIED_LOG_FILE", "jravis_unified.log")
+PORT = int(os.getenv("PORT", "10000"))
 
-How to run (Replit):
-  1) In Replit shell: pip install --upgrade pip==24.2
-  2) pip install flask python-dotenv reportlab openai
-  3) Set envs in Replit: JRAVIS_PASSWORD, SECRET_KEY, optionally OPENAI_API_KEY, SMTP_*
-  4) Run: python jravis_dashboard_v5.py
-
-How to run (Production):
-  pip install -r requirements.txt  # flask, python-dotenv, reportlab(optional), openai(optional)
-  export DEPLOY_TARGET=production
-  gunicorn jravis_dashboard_v5:app --bind 0.0.0.0:$PORT
-
-Put logo at static/logo.png
-"""
-
-from flask import Flask, request, jsonify, send_from_directory, render_template_string, session, redirect, url_for, flash
-import os
-import json
-import threading
-import time
-from datetime import datetime, timedelta, timezone
-import uuid
-import smtplib
-from email.message import EmailMessage
-from zoneinfo import ZoneInfo
-import atexit
-
-# Optional libraries
-try:
-    from reportlab.lib.pagesizes import letter
-    from reportlab.pdfgen import canvas
-    REPORTLAB_AVAILABLE = True
-except Exception:
-    REPORTLAB_AVAILABLE = False
-
-OPENAI_AVAILABLE = False
-OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
-if OPENAI_API_KEY:
-    try:
-        import openai
-        openai.api_key = OPENAI_API_KEY
-        OPENAI_AVAILABLE = True
-    except Exception:
-        OPENAI_AVAILABLE = False
-
-# Config
-APP_DIR = os.path.dirname(__file__)
-REPORTS_DIR = os.path.join(APP_DIR, 'reports')
-STATIC_DIR = os.path.join(APP_DIR, 'static')
-for d in (REPORTS_DIR, STATIC_DIR):
-    if not os.path.exists(d):
-        os.makedirs(d, exist_ok=True)
-
-DEPLOY_TARGET = os.environ.get('DEPLOY_TARGET', 'replit')  # 'replit' or 'production'
-JRAVIS_PASSWORD = os.environ.get('JRAVIS_PASSWORD', 'bosspass')
-USERNAME = 'Boss'
-SECRET_KEY = os.environ.get('SECRET_KEY', 'change_me')
-REPORT_EMAIL = os.environ.get('REPORT_EMAIL')
-
+# Flask app
 app = Flask(__name__)
-app.config['JSON_SORT_KEYS'] = False
-app.config['SESSION_PERMANENT'] = False
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=10)
-app.secret_key = SECRET_KEY
+app.secret_key = os.getenv(
+    "FLASK_SECRET", "jravis-secret-key")  # ephemeral; set for persistence
 
-# State
-STATE_FILE = os.path.join(APP_DIR, 'jravis_state.json')
-state_lock = threading.Lock()
+# ---------- Embedded small SVG favicon ----------
+FAVICON_SVG = """<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>
+  <rect width='64' height='64' rx='10' fill='#071022'/>
+  <g fill='#00ffff' opacity='0.95'>
+    <circle cx='20' cy='22' r='4'/>
+    <rect x='28' y='16' width='24' height='12' rx='3'/>
+  </g>
+</svg>"""
 
-def default_state():
-    return {
-        'phases': {
-            '1': {
-                'name': 'Phase 1 (Fast Kickstart)',
-                'streams': [
-                    {'name': 'Elina Instagram Reels', 'last_run': '', 'status': 'OK', 'amount_today': 0},
-                    {'name': 'Printify POD Store', 'last_run': '', 'status': 'OK', 'amount_today': 0},
-                    {'name': 'Messty AI Store', 'last_run': '', 'status': 'RUNNING', 'amount_today': 0}
-                ],
-                'notes': 'Activate 3 fastest streams and monitor daily.'
-            },
-            '2': {'name': 'Phase 2 (Scale & Automate)', 'streams': [], 'notes': 'Automate operational flows.'},
-            '3': {'name': 'Phase 3 (Passive Systems)', 'streams': [], 'notes': 'Fully passive, legal, and automated.'}
-        },
-        'chat_history': [],
-        'reports': [],
-        'target_monthly': 150000,
-        'monthly_earned': 0,
-        'daily_earned': 0,
-        'status': {'brain': 'ACTIVE', 'last_loop': '', 'api_ok': True}
-    }
-
-
-def load_state():
-    try:
-        with state_lock:
-            if os.path.exists(STATE_FILE):
-                with open(STATE_FILE, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-    except Exception:
-        pass
-    return default_state()
-
-
-def save_state(s=None):
-    try:
-        with state_lock:
-            if s is None:
-                s = app_state
-            with open(STATE_FILE, 'w', encoding='utf-8') as f:
-                json.dump(s, f, indent=2, ensure_ascii=False)
-    except Exception as e:
-        app.logger.exception('Failed saving state: %s', e)
-
-app_state = load_state()
-
-# Timezones
-IST = ZoneInfo('Asia/Kolkata')
-UTC = timezone.utc
-
-# Report scheduler settings
-REPORT_CHECK_INTERVAL = 30  # seconds between checks
-
-# Authentication helpers
-@app.before_request
-def auto_logout_check():
-    # Allow static and login endpoints
-    if request.endpoint in ('static', 'login', 'do_login'):
-        return
-    last = session.get('last_active')
-    now_ts = datetime.now(UTC).timestamp()
-    if last and (now_ts - float(last) > 10 * 60):
-        session.clear()
-        flash('Logged out due to inactivity', 'info')
-        return redirect(url_for('login'))
-    if 'user' in session:
-        session['last_active'] = str(now_ts)
-
-def require_login(func):
-    from functools import wraps
-    @wraps(func)
-    def wrapper(*a, **kw):
-        if 'user' not in session:
-            return redirect(url_for('login'))
-        return func(*a, **kw)
-    return wrapper
-
-# Login routes
-@app.route('/login', methods=['GET'])
-def login():
-    html = r"""
-<!doctype html>
+# ----------------- HTML templates -----------------
+LOGIN_HTML = """<!doctype html>
 <html>
-<head><meta name="viewport" content="width=device-width,initial-scale=1"><title>JRAVIS Login</title>
-<style>body{font-family:Inter,Arial;background:#071021;color:#e6f0fb;display:flex;align-items:center;justify-content:center;height:100vh}
-.box{background:rgba(255,255,255,0.03);padding:28px;border-radius:12px;backdrop-filter:blur(6px);width:360px}
-input{width:100%;padding:10px;margin:8px 0;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:#fff}
-button{width:100%;padding:10px;border-radius:8px;border:none;background:#0b72ff;color:white}
-.logo{display:flex;align-items:center;gap:10px;margin-bottom:12px}
-.logo img{height:44px}
+<head><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>JRAVIS Login</title>
+<style>
+body{background:#071022;color:#e6eef6;font-family:Inter,Arial,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
+.card{background:rgba(255,255,255,0.03);padding:28px;border-radius:12px;width:320px;text-align:center}
+input[type=password]{width:100%;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);background:transparent;color:inherit}
+button{margin-top:12px;padding:10px 16px;border-radius:8px;border:none;background:linear-gradient(90deg,#00ffff,#00ff7f);color:#042018;font-weight:700;cursor:pointer}
+.err{color:#ffb4b4;margin-top:8px}
+.small{color:#9aa7bf;font-size:12px;margin-top:10px}
 </style></head>
 <body>
-<div class="box">
-  <div class="logo"><img src="/static/logo.png" alt="logo" onerror="this.style.display='none'"><div><strong>JRAVIS</strong><div style="font-size:12px;color:#9fb3d9">Mission 2040</div></div></div>
-  <form method="post" action="/do_login">
-    <input name="username" value="Boss" readonly />
-    <input name="password" type="password" placeholder="Password" />
-    <button type="submit">Login</button>
-  </form>
-</div>
-</body>
-</html>
-    """
-    return render_template_string(html)
+<div class="card">
+<img src="/favicon.svg" width=86 alt="logo" style="border-radius:8px;margin-bottom:10px"/>
+<h2>JRAVIS Secure Access</h2>
+<form method="post" action="/login">
+<input name="code" type="password" placeholder="Enter Lock Code" required/>
+<button>Unlock</button>
+</form>
+{% if error %}<div class="err">{{ error }}</div>{% endif %}
+<div class="small">Auto-logout after 10 minutes of inactivity</div>
+</div></body></html>
+"""
 
-@app.route('/do_login', methods=['POST'])
-def do_login():
-    username = request.form.get('username')
-    password = request.form.get('password')
-    if username == USERNAME and password == JRAVIS_PASSWORD:
-        session['user'] = username
-        session['last_active'] = str(datetime.now(UTC).timestamp())
-        return redirect(url_for('index'))
-    flash('Invalid credentials', 'error')
-    return redirect(url_for('login'))
-
-@app.route('/logout')
-def logout():
-    session.clear()
-    return redirect(url_for('login'))
-
-# Reporting & email
-
-def make_text_report(now, trigger_reason='scheduled'):
-    filename = now.strftime('%Y-%m-%d_%H-%M-%S_summary.txt')
-    filepath = os.path.join(REPORTS_DIR, filename)
-    with state_lock:
-        phases = app_state.get('phases', {})
-        chat_history = app_state.get('chat_history', [])[-50:]
-        monthly = app_state.get('monthly_earned', 0)
-        daily = app_state.get('daily_earned', 0)
-
-    lines = []
-    lines.append('JRAVIS Summary Report')
-    lines.append('Generated: ' + now.isoformat())
-    lines.append('Trigger: ' + trigger_reason)
-    lines.append('
---- Phases ---')
-    for pid, pdata in phases.items():
-        lines.append(f"Phase {pid}: {pdata.get('name')}")
-        for s in pdata.get('streams', []):
-            lines.append(f"  - {s.get('name')} | last: {s.get('last_run')} | status: {s.get('status')} | amount: {s.get('amount_today')}")
-    lines.append('
---- Totals ---')
-    lines.append(f'Monthly earned: {monthly}')
-    lines.append(f'Daily earned: {daily}')
-    lines.append('
---- Recent Chat ---')
-    for c in chat_history:
-        lines.append(f"[{c.get('ts')}] {c.get('who')}: {c.get('text')}")
-
-    with open(filepath, 'w', encoding='utf-8') as f:
-        f.write('
-'.join(lines))
-
-    rec = {'id': str(uuid.uuid4()), 'filename': filename, 'path': filepath, 'generated_at': now.isoformat(), 'trigger': trigger_reason}
-    with state_lock:
-        app_state.setdefault('reports', []).append(rec)
-        save_state()
-    return rec
-
-
-def make_pdf_report(now, text_path, title_override=None):
-    if not REPORTLAB_AVAILABLE:
-        return None
-    pdf_name = now.strftime('%Y-%m-%d_%H-%M-%S_summary.pdf')
-    pdf_path = os.path.join(REPORTS_DIR, pdf_name)
-    try:
-        c = canvas.Canvas(pdf_path, pagesize=letter)
-        with open(text_path, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-        y = 750
-        if title_override:
-            c.setFont('Helvetica-Bold', 14)
-            c.drawString(40, y, title_override)
-            y -= 24
-        c.setFont('Helvetica', 10)
-        for line in lines:
-            c.drawString(40, y, line.strip())
-            y -= 12
-            if y < 40:
-                c.showPage(); y = 750
-        c.save()
-        return pdf_path
-    except Exception:
-        app.logger.exception('PDF creation failed')
-        return None
-
-
-def send_email(to_email, subject, body, attachments=None):
-    smtp_host = os.environ.get('SMTP_HOST')
-    if not smtp_host:
-        app.logger.info('SMTP not configured, skipping email send')
-        return False
-    smtp_port = int(os.environ.get('SMTP_PORT', 587))
-    smtp_user = os.environ.get('SMTP_USER')
-    smtp_pass = os.environ.get('SMTP_PASS')
-    msg = EmailMessage()
-    msg['From'] = smtp_user or 'jravis@localhost'
-    msg['To'] = to_email
-    msg['Subject'] = subject
-    msg.set_content(body)
-    for p in (attachments or []):
-        try:
-            with open(p, 'rb') as fh:
-                data = fh.read()
-            msg.add_attachment(data, maintype='application', subtype='octet-stream', filename=os.path.basename(p))
-        except Exception:
-            app.logger.exception('Failed attaching %s', p)
-    try:
-        with smtplib.SMTP(smtp_host, smtp_port) as s:
-            s.starttls()
-            if smtp_user and smtp_pass:
-                s.login(smtp_user, smtp_pass)
-            s.send_message(msg)
-        return True
-    except Exception:
-        app.logger.exception('Email send failed')
-        return False
-
-# Scheduler
-stop_event = threading.Event()
-
-def report_scheduler(stop_event):
-    # checks every REPORT_CHECK_INTERVAL seconds for daily 10:00 IST and weekly Sunday 00:00 UTC
-    last_daily = None
-    last_weekly = None
-    while not stop_event.is_set():
-        now_utc = datetime.now(UTC)
-        now_ist = now_utc.astimezone(IST)
-        # Daily at 10:00 IST (run once per day)
-        if now_ist.hour == 10 and now_ist.minute == 0:
-            day_key = now_ist.date().isoformat()
-            if day_key != last_daily:
-                try:
-                    rec = make_text_report(now_utc, trigger_reason='daily_10_IST')
-                    if REPORTLAB_AVAILABLE:
-                        pdf = make_pdf_report(now_utc, rec['path'])
-                    if REPORT_EMAIL:
-                        attachments = [pdf] if (REPORTLAB_AVAILABLE and pdf) else [rec['path']]
-                        send_email(REPORT_EMAIL, 'JRAVIS Daily Report', 'Attached daily report', attachments=attachments)
-                except Exception:
-                    app.logger.exception('Daily report error')
-                last_daily = day_key
-        # Weekly Sunday 00:00 UTC
-        if now_utc.weekday() == 6 and now_utc.hour == 0 and now_utc.minute == 0:
-            week_key = now_utc.isocalendar()[1]
-            if week_key != last_weekly:
-                try:
-                    rec = make_text_report(now_utc, trigger_reason='weekly_sun_00_UTC')
-                    if REPORTLAB_AVAILABLE:
-                        pdf = make_pdf_report(now_utc, rec['path'], title_override='Weekly JRAVIS Summary')
-                    if REPORT_EMAIL:
-                        attachments = [pdf] if (REPORTLAB_AVAILABLE and pdf) else [rec['path']]
-                        send_email(REPORT_EMAIL, 'JRAVIS Weekly Report', 'Attached weekly report', attachments=attachments)
-                except Exception:
-                    app.logger.exception('Weekly report error')
-                last_weekly = week_key
-        for _ in range(int(REPORT_CHECK_INTERVAL)):
-            if stop_event.is_set():
-                break
-            time.sleep(1)
-
-worker_thread = threading.Thread(target=report_scheduler, args=(stop_event,), daemon=True)
-worker_thread.start()
-
-@atexit.register
-def _shutdown():
-    stop_event.set()
-    save_state()
-
-# API & UI
-@app.route('/api/state')
-@require_login
-def api_state():
-    return jsonify(app_state)
-
-@app.route('/api/phase/<phase_id>', methods=['POST'])
-@require_login
-def api_update_phase(phase_id):
-    payload = request.get_json() or {}
-    with state_lock:
-        phases = app_state.setdefault('phases', {})
-        if phase_id not in phases:
-            phases[phase_id] = {'name': payload.get('name', f'Phase {phase_id}'), 'streams': [], 'notes': ''}
-        phases[phase_id]['name'] = payload.get('name', phases[phase_id].get('name'))
-        phases[phase_id]['notes'] = payload.get('notes', phases[phase_id].get('notes'))
-        phases[phase_id]['streams'] = payload.get('streams', phases[phase_id].get('streams', []))
-        save_state()
-    return jsonify({'ok': True, 'phase': phases[phase_id]})
-
-@app.route('/api/chat', methods=['POST'])
-@require_login
-def api_chat():
-    data = request.get_json() or {}
-    text = data.get('text', '').strip()
-    if not text:
-        return jsonify({'error': 'empty'}), 400
-    now = datetime.now(UTC).isoformat()
-    msg = {'who': 'Boss', 'text': text, 'ts': now}
-    with state_lock:
-        app_state.setdefault('chat_history', []).append(msg)
-        reply_text = f'Logged: "{text}". I will prepare next steps.'
-        if OPENAI_AVAILABLE:
-            try:
-                resp = openai.ChatCompletion.create(model='gpt-4o-mini', messages=[{'role':'user','content':text}], max_tokens=150)
-                reply_text = resp.choices[0].message.content.strip()
-            except Exception:
-                app.logger.exception('OpenAI reply failed')
-        reply = {'who': 'Dhruvayu', 'text': reply_text, 'ts': datetime.now(UTC).isoformat()}
-        app_state['chat_history'].append(reply)
-        save_state()
-    return jsonify({'ok': True})
-
-@app.route('/api/generate_report', methods=['POST'])
-@require_login
-def api_generate_report():
-    rec = make_text_report(datetime.now(UTC), trigger_reason='manual')
-    return jsonify(rec)
-
-@app.route('/reports/<path:filename>')
-@require_login
-def serve_report(filename):
-    return send_from_directory(REPORTS_DIR, filename, as_attachment=True)
-
-@app.route('/api/shutdown', methods=['POST'])
-@require_login
-def api_shutdown():
-    stop_event.set()
-    save_state()
-    func = request.environ.get('werkzeug.server.shutdown')
-    if func:
-        func()
-        return jsonify({'ok': True, 'msg': 'shutting down'})
-    else:
-        return jsonify({'error': 'not running with werkzeug'}), 500
-
-# Main UI
-@app.route('/')
-@require_login
-def index():
-    html = r"""
-<!doctype html>
-<html lang="en">
+DASH_HTML = """<!doctype html>
+<html>
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>JRAVIS Dashboard v5 Ultimate</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>JRAVIS v5 — Mission 2040</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <style>
-    :root{--bg:#071021;--card:rgba(255,255,255,0.04);--glass:rgba(255,255,255,0.03);--accent:#0b72ff;--muted:#93a6c4}
-    body{margin:0;font-family:Inter,Arial,system-ui;background:linear-gradient(180deg,#031023 0%, #07121d 100%);color:#e6f0fb}
-    header{display:flex;align-items:center;justify-content:space-between;padding:14px 20px}
+    :root{--bg:#071022;--card:rgba(255,255,255,0.04);--muted:#9aa7bf;--accent1:#00ffff;--accent2:#00ff7f}
+    body{margin:0;font-family:Inter,Arial,sans-serif;background:var(--bg);color:#e6eef6}
+    header{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid rgba(255,255,255,0.03)}
     .brand{display:flex;align-items:center;gap:12px}
-    .logo img{height:48px}
-    .top-controls{display:flex;gap:10px;align-items:center}
-    .btn{background:var(--accent);border:none;padding:8px 12px;border-radius:10px;color:white;cursor:pointer}
-    .container{max-width:1200px;margin:10px auto;padding:12px}
-    .grid{display:grid;grid-template-columns:1fr 420px;gap:16px}
-    .card{background:var(--card);padding:14px;border-radius:12px;box-shadow:0 8px 20px rgba(2,6,23,0.6)}
-    .tabs{display:flex;gap:8px}
-    .tab{padding:8px 10px;border-radius:8px;background:transparent;border:1px solid rgba(255,255,255,0.03);cursor:pointer}
-    .tab.active{background:linear-gradient(180deg, rgba(11,114,255,0.14), rgba(11,114,255,0.06));box-shadow:inset 0 -2px 0 rgba(11,114,255,0.25)}
-    table{width:100%;border-collapse:collapse;color:#dfefff}
-    td,th{padding:8px;text-align:left;border-bottom:1px solid rgba(255,255,255,0.02)}
-    .progress{height:12px;background:rgba(255,255,255,0.04);border-radius:8px;overflow:hidden}
-    .progress > i{display:block;height:100%}
-    #map{height:220px;border-radius:8px}
-
-    @media(max-width:980px){.grid{grid-template-columns:1fr}}
+    .brand h1{font-size:18px;margin:0;color:var(--accent1)}
+    .controls{display:flex;gap:8px;align-items:center}
+    .logout{background:transparent;border:1px solid rgba(255,255,255,0.06);padding:8px 10px;border-radius:8px;color:#e6eef6;cursor:pointer}
+    .wrap{padding:18px;max-width:1200px;margin:0 auto}
+    .grid{display:grid;grid-template-columns:2fr 1fr;gap:18px}
+    .card{background:var(--card);padding:16px;border-radius:12px;box-shadow:0 6px 18px rgba(0,0,0,0.6)}
+    .phase-tabs{display:flex;gap:8px;margin-bottom:12px}
+    .phase-tabs button{flex:1;background:rgba(255,255,255,0.05);color:#eaf1ff;border:none;border-radius:8px;padding:8px 10px;cursor:pointer}
+    .phase-tabs button.active{background:linear-gradient(90deg,var(--accent1),var(--accent2));color:#001}
+    table{width:100%;border-collapse:collapse;font-size:14px}
+    th,td{padding:8px;border-bottom:1px solid rgba(255,255,255,0.08);text-align:left}
+    .ok{color:#00ff7f}.run{color:#ffaa00}.fail{color:#ff5e5e}
+    .progress{height:10px;border-radius:6px;background:rgba(255,255,255,0.08);overflow:hidden}
+    .progress>div{height:100%;background:linear-gradient(90deg,var(--accent1),var(--accent2));width:12%}
+    .chatbox{display:flex;gap:8px;margin-top:12px}
+    .chatbox input{flex:1;padding:10px;border-radius:8px;border:none;background:rgba(255,255,255,0.05);color:#fff}
+    .chatbox button{background:linear-gradient(90deg,var(--accent1),var(--accent2));border:none;padding:10px 14px;border-radius:8px;color:#001;font-weight:700}
+    .log-stream{background:#0b1320;color:#cfeff0;padding:10px;border-radius:8px;height:220px;overflow:auto;font-family:monospace;font-size:12px}
+    .small{color:var(--muted);font-size:13px}
+    @media(max-width:768px){.grid{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
-  <header>
-    <div class="brand"><div class="logo"><img src="/static/logo.png" onerror="this.style.display='none'"></div><div><strong>JRAVIS</strong><div style="font-size:12px;color:var(--muted)">Phase 1 Global System Status</div></div></div>
-    <div class="top-controls">
-      <div style="text-align:right;color:var(--muted);font-size:13px">Status: <strong id="brainStatus">ACTIVE</strong><br/><span id="lastLoop">Last Loop: --</span></div>
-      <button class="btn" onclick="location.href='/logout'">Logout</button>
-    </div>
-  </header>
-  <div class="container">
-    <div class="grid">
-      <div>
-        <div class="card">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-            <div style="font-weight:700">Phases</div>
-            <div class="tabs" id="phaseTabs"></div>
-          </div>
-          <div id="phaseContent"></div>
-        </div>
-
-        <div style="height:12px"></div>
-
-        <div class="card" style="margin-top:12px">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-            <div style="font-weight:700">Charts & Map</div>
-            <div style="font-size:12px;color:var(--muted)">Live</div>
-          </div>
-          <canvas id="incomeChart" height="120"></canvas>
-          <div style="height:12px"></div>
-          <div id="map"></div>
-        </div>
-      </div>
-
-      <div>
-        <div class="card">
-          <div style="font-weight:700;margin-bottom:8px">Summary</div>
-          <div id="summaryTop"></div>
-          <div style="height:12px"></div>
-          <div style="font-weight:700;margin-bottom:8px">Recent Reports</div>
-          <div id="reportsList">Loading...</div>
-        </div>
-
-        <div style="height:12px"></div>
-
-        <div class="card">
-          <div style="font-weight:700;margin-bottom:8px">Dhruvayu Chat</div>
-          <div id="chatBox" style="height:270px;overflow:auto;padding:6px;background:rgba(0,0,0,0.15);border-radius:8px;color:#dff;">
-          </div>
-          <div style="display:flex;gap:8px;margin-top:8px">
-            <input id="chatInput" placeholder="How can I assist?" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:#fff" />
-            <button class="btn" onclick="sendChat()">Send</button>
-          </div>
-        </div>
-
-      </div>
-    </div>
+<header>
+  <div class="brand">
+    <img src="/favicon.svg" width=42 alt="logo" style="border-radius:6px"/>
+    <h1>JRAVIS v5 — Mission 2040</h1>
   </div>
+  <div class="controls">
+    <form action="/logout" method="post" style="margin:0">
+      <button class="logout">Logout</button>
+    </form>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="grid">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div><b>System Status</b></div>
+        <div class="small">Last Loop: <span id="last-loop">--</span></div>
+      </div>
+
+      <div style="margin-top:12px">
+        <div><b>JRAVIS Brain:</b> <span id="s-brain">ACTIVE</span></div>
+        <div><b>VA Bot Connector:</b> <span id="s-vabot">ACTIVE</span></div>
+        <div><b>Income Bundle:</b> <span id="s-income">API OK</span></div>
+      </div>
+
+      <div style="margin-top:14px" class="phase-tabs">
+        <button class="active" onclick="showPhase(1)">Phase 1</button>
+        <button onclick="showPhase(2)">Phase 2</button>
+        <button onclick="showPhase(3)">Phase 3</button>
+      </div>
+
+      <div style="margin-top:6px">
+        <table id="phase-table"><tr><th>#</th><th>Stream</th><th>Target</th><th>Status</th><th>Goal</th></tr></table>
+      </div>
+
+      <div style="margin-top:12px">
+        <b>Log Stream</b>
+        <div id="logbox" class="log-stream"></div>
+      </div>
+
+    </div>
+
+    <div class="card">
+      <div><b>INCOME → LIVE FEED</b></div>
+      <div class="income-stats" style="margin-top:10px">
+        <div>Target: INR 4,00,00,000</div>
+        <div>Progress: <span id="progress-text">0%</span></div>
+        <div class="progress" style="margin:8px 0"><div id="progress-bar" style="width:12%"></div></div>
+        <div>Monthly: <span id="monthly">INR 0</span></div>
+        <div>Daily: <span id="daily">INR 0</span></div>
+        <div class="small" style="margin-top:8px">Next Report: Daily 10:00 AM IST | Weekly Sunday 00:00 IST</div>
+      </div>
+
+      <div style="margin-top:18px"><b>JRAVIS Assistant</b></div>
+      <div class="chatbox">
+        <input id="chat-input" placeholder="Type a command (e.g. 'phase 1', 'trigger all')"/>
+        <button onclick="sendCmd()">Send</button>
+      </div>
+      <div class="small" style="margin-top:8px">Assistant Online: <span id="assistant-status">Yes</span></div>
+    </div>
+
+  </div>
+</div>
 
 <script>
-let activePhase = '1';
-async function api(path, opts){ const r = await fetch(path, opts); if(r.headers.get('content-type')?.includes('application/json')) return r.json(); return r.text(); }
-function renderPhaseTabs(phases){ const el = document.getElementById('phaseTabs'); el.innerHTML=''; Object.keys(phases).forEach(pid=>{ const btn = document.createElement('button'); btn.className='tab'+(pid===activePhase?' active':''); btn.textContent='P'+pid; btn.onclick=()=>{ activePhase=pid; renderPhase(phases[pid], pid); renderPhaseTabs(phases); }; el.appendChild(btn); }); }
-function renderPhase(data, pid){ const c = document.getElementById('phaseContent'); c.innerHTML=''; const title = document.createElement('div'); title.style.fontWeight='700'; title.textContent = data.name; c.appendChild(title); const tbl = document.createElement('table'); const thead = document.createElement('thead'); thead.innerHTML='<tr><th>#</th><th>Stream</th><th>Last Run</th><th>Status</th><th>Amount</th></tr>'; tbl.appendChild(thead); const tbody = document.createElement('tbody'); (data.streams||[]).forEach((s,i)=>{ const tr=document.createElement('tr'); tr.innerHTML=`<td>${i+1}</td><td>${s.name||s}</td><td>${s.last_run||'--'}</td><td>${s.status||''}</td><td>${s.amount_today||0}</td>`; tbody.appendChild(tr); }); tbl.appendChild(tbody); c.appendChild(tbl); const edit = document.createElement('button'); edit.className='btn'; edit.style.marginTop='8px'; edit.textContent='Edit Phase'; edit.onclick=()=>editPhase(pid,data); c.appendChild(edit); }
-function editPhase(pid,data){ const newName = prompt('Phase name', data.name)||data.name; const newNotes = prompt('Phase notes', data.notes||'')||data.notes||''; const streamsText = (data.streams||[]).map(s=>s.name||s).join(', '); const newStreams = prompt('Comma-separated stream names', streamsText)||streamsText; const payload = {name:newName,notes:newNotes,streams:newStreams.split(',').map(s=>({name:s.trim(),last_run:'',status:'OK',amount_today:0}))}; fetch('/api/phase/'+pid, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}).then(()=>loadState()); }
-async function loadState(){ const s = await api('/api/state'); renderPhaseTabs(s.phases); renderPhase(s.phases[activePhase],activePhase); renderSummary(s); renderReports(s.reports||[]); renderChat(s.chat_history||[]); }
-function renderSummary(s){ document.getElementById('brainStatus').textContent = s.status?.brain || 'OK'; document.getElementById('lastLoop').textContent = 'Last Loop: ' + (s.status?.last_loop||'--'); const out = document.getElementById('summaryTop'); out.innerHTML = `<div>Monthly Target: ₹${s.target_monthly||0}</div><div>Monthly Earned: ₹${s.monthly_earned||0}</div><div>Daily Earned: ₹${s.daily_earned||0}</div><div style="margin-top:8px"><div class="progress"><i style="width:${Math.min(100,((s.monthly_earned||0)/ (s.target_monthly||1))*100)}%;background:linear-gradient(90deg,#0b72ff,#00d4ff)"></i></div></div>` }
-function renderReports(reports){ const el = document.getElementById('reportsList'); el.innerHTML=''; (reports||[]).slice().reverse().forEach(r=>{ const a=document.createElement('a'); a.href='/reports/'+r.filename; a.textContent=r.filename; a.style.display='block'; el.appendChild(a); }); }
-function renderChat(messages){ const box=document.getElementById('chatBox'); box.innerHTML=''; (messages||[]).forEach(m=>{ const d=document.createElement('div'); d.style.margin='6px 0'; d.innerHTML=`<strong>${m.who}</strong> <span style='color:#99b3d6;font-size:12px'>${new Date(m.ts).toLocaleString()}</span><div>${m.text}</div>`; box.appendChild(d); }); box.scrollTop=box.scrollHeight; }
-async function sendChat(){ const input=document.getElementById('chatInput'); const text=input.value.trim(); if(!text) return; input.value=''; await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})}); await loadState(); }
-let incomeChart=null; function initChart(){ const ctx=document.getElementById('incomeChart').getContext('2d'); incomeChart = new Chart(ctx, {type:'line',data:{labels:[],datasets:[{label:'Daily',data:[],fill:true}]},options:{responsive:true}}); }
-function initMap(){ try{ const map = L.map('map').setView([20,0],2); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:8}).addTo(map); L.marker([20,77]).addTo(map).bindPopup('HQ').openPopup(); }catch(e){console.warn('Leaflet init failed',e);} }
-window.onload = function(){ initChart(); initMap(); loadState(); setInterval(loadState,8000); }
+// ------- JS: Phase loader, progress, logs, chat -------
+async function showPhase(num){
+  const tabs = document.querySelectorAll('.phase-tabs button');
+  tabs.forEach(t=>t.classList.remove('active'));
+  tabs[num-1].classList.add('active');
+
+  const table = document.getElementById("phase-table");
+  try{
+    const res = await fetch('/api/phase/'+num);
+    const data = await res.json();
+    let html = '<tr><th>#</th><th>Stream</th><th>Target</th><th>Status</th><th>Goal</th></tr>';
+    data.forEach(d=>{
+      let st = d.status || 'ACTIVE';
+      let cls = st=="ACTIVE" ? "ok" : (st=="RUNNING" ? "run" : "fail");
+      html += `<tr><td>${d.id}</td><td>${d.name}</td><td>${d.target||''}</td><td class="${cls}">${st}</td><td>${d.goal||''}</td></tr>`;
+    });
+    table.innerHTML = html;
+  }catch(e){
+    table.innerHTML = '<tr><td colspan="5">Failed to load phase data</td></tr>';
+  }
+}
+
+async function updateProgress(){
+  try{
+    const res = await fetch('/api/live_progress');
+    const data = await res.json();
+    const pct = data.progress_percent || 0;
+    document.getElementById('progress-bar').style.width = pct + '%';
+    document.getElementById('progress-text').innerText = pct + '%';
+    document.getElementById('monthly').innerText = 'INR ' + ((data.total_income||0).toLocaleString());
+    document.getElementById('daily').innerText = 'INR ' + ((data.daily_income||0).toLocaleString ? data.daily_income.toLocaleString() : data.total_income||0);
+    document.getElementById('last-loop').innerText = data.last_loop || '--';
+  }catch(e){
+    console.log('progress fetch failed', e);
+  }
+}
+
+async function refreshLogs(){
+  try{
+    const res = await fetch('/api/live_logs');
+    const lines = await res.json();
+    const box = document.getElementById('logbox');
+    box.innerHTML = lines.map(l => '<div>'+l.replace(/</g,'&lt;')+'</div>').join('');
+    box.scrollTop = box.scrollHeight;
+  }catch(e){
+    console.log('log fetch failed', e);
+  }
+}
+
+async function sendCmd(){
+  const v = document.getElementById('chat-input').value.trim();
+  if(!v) return;
+  if(v.toLowerCase().startsWith('phase')){
+    const m = v.match(/\\d+/);
+    showPhase(m ? Number(m[0]) : 1);
+    document.getElementById('chat-input').value = '';
+    return;
+  }
+  if(v.toLowerCase().includes('trigger all')){
+    try{
+      const res = await fetch('/api/trigger', {method:'POST'});
+      alert('Triggered: '+ (await res.text()));
+    }catch(e){ alert('Trigger failed'); }
+    return;
+  }
+  try{
+    const res = await fetch('/api/command', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({cmd:v})
+    });
+    const j = await res.json();
+    alert('Sent: '+ JSON.stringify(j));
+  }catch(e){
+    alert('send failed');
+  }
+  document.getElementById('chat-input').value = '';
+}
+
+// initial
+showPhase(1);
+updateProgress();
+refreshLogs();
+setInterval(updateProgress, 1800000); // 30 min
+setInterval(refreshLogs, 5000);
 </script>
 </body>
 </html>
-    """
-    return render_template_string(html)
+"""
 
+
+# ---------------- Helper functions -----------------
+def bridge_headers():
+  return {
+      'Authorization': f'Bearer {SHARED_KEY}',
+      'Content-Type': 'application/json'
+  }
+
+
+# ---------------- Routes -----------------
+@app.route('/favicon.svg')
+def favicon_svg():
+  return FAVICON_SVG, 200, {'Content-Type': 'image/svg+xml'}
+
+
+# Simple login/logout using session
+@app.route('/', methods=['GET'])
+def root():
+  if session.get('unlocked'):
+    return redirect('/dashboard')
+  return render_template_string(LOGIN_HTML, error=None)
+
+
+@app.route('/login', methods=['POST'])
+def login():
+  code = request.form.get('code', '')
+  if code == LOCK_CODE:
+    session['unlocked'] = True
+    session.permanent = True
+    return redirect('/dashboard')
+  return render_template_string(LOGIN_HTML, error="Invalid code")
+
+
+@app.route('/logout', methods=['POST'])
+def logout():
+  session.clear()
+  return redirect('/')
+
+
+@app.route('/dashboard')
+def dashboard():
+  if not session.get('unlocked'):
+    return redirect('/')
+  return render_template_string(DASH_HTML)
+
+
+# Return streams for a phase: consult bridge or local fallback
+@app.route('/api/phase/<int:phase_id>')
+def api_phase(phase_id):
+  key = f'phase{phase_id}'
+  try:
+    r = requests.get(f"{BRIDGE_URL}/api/phase/{phase_id}",
+                     headers=bridge_headers(),
+                     timeout=4)
+    if r.status_code == 200:
+      return r.content, r.status_code, r.headers.items()
+  except Exception:
+    pass
+  # fallback to local file
+  try:
+    with open(STREAMS_FILE, 'r', encoding='utf-8') as f:
+      cfg = json.load(f)
+    return jsonify(cfg.get(key, []))
+  except Exception:
+    return jsonify([])
+
+
+# Live progress: fetch from mission bridge income endpoint
+@app.route('/api/live_progress')
+def api_live_progress():
+  try:
+    r = requests.get(f"{BRIDGE_URL}/api/income",
+                     headers=bridge_headers(),
+                     timeout=4)
+    if r.status_code == 200:
+      return r.content, r.status_code, r.headers.items()
+  except Exception:
+    pass
+  # fallback
+  fallback = {
+      'total_income': 0,
+      'progress_percent': 0,
+      'target': 40000000,
+      'daily_income': 0,
+      'last_loop': None
+  }
+  return jsonify(fallback)
+
+
+# Trigger a full loop via jravis-core trigger endpoint (if available)
+@app.route('/api/trigger', methods=['POST', 'GET'])
+def api_trigger():
+  # best-effort: try jravis core (expected at BRIDGE or same workspace)
+  jc_url = os.getenv('JRAVIS_CORE_URL', 'http://localhost:7000')
+  try:
+    r = requests.post(f"{jc_url}/api/trigger_all",
+                      headers=bridge_headers(),
+                      timeout=6)
+    return (r.content, r.status_code, r.headers.items())
+  except Exception as e:
+    return (f"trigger failed: {e}", 500)
+
+
+# Forward commands to VA Bot
+@app.route('/api/command', methods=['POST'])
+def api_command():
+  data = request.json or {}
+  cmd = data.get('cmd', '')
+  try:
+    r = requests.post(f"{VABOT_URL}/api/execute",
+                      headers=bridge_headers(),
+                      json={'stream': {
+                          'id': 0,
+                          'name': cmd
+                      }},
+                      timeout=6)
+    return r.content, r.status_code, r.headers.items()
+  except Exception as e:
+    return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+# Live logs endpoint (reads a file written by start_all.py if used)
+@app.route('/api/live_logs')
+def api_live_logs():
+  try:
+    if not os.path.exists(LOG_FILE):
+      return jsonify([])
+    with open(LOG_FILE, 'r', encoding='utf-8', errors='ignore') as f:
+      lines = f.read().splitlines()[-400:]
+    return jsonify(lines)
+  except Exception:
+    return jsonify([])
+
+
+# Status endpoint
+@app.route('/api/status')
+def api_status():
+  return jsonify({'service': 'jravis-dashboard', 'ok': True})
+
+
+# --------------- Run ---------------
 if __name__ == '__main__':
-    if DEPLOY_TARGET == 'replit':
-        print('Running in Replit mode. If you see xml/pyexpat errors, downgrade pip: pip install --upgrade pip==24.2')
-    else:
-        print('Running in production mode. Use gunicorn for best results.')
-    print('Starting JRAVIS Dashboard v5 Ultimate on port 10000')
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 10000)), debug=(DEPLOY_TARGET=='replit'))
+  print(f"[JRAVIS v5] Dashboard starting on port {PORT}")
+  app.run(host='0.0.0.0', port=PORT)
