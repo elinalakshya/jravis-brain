@@ -194,6 +194,9 @@ async function updateProgress(){
   }
 }
 
+# JavaScript section inside your HTML builder
+lines.append("""
+<script>
 async function refreshLogs(){
   try{
     const res = await fetch('/api/live_logs');
@@ -235,6 +238,9 @@ async function sendCmd(){
   }
   document.getElementById('chat-input').value = '';
 }
+</script>
+""")
+
 
 // initial
 showPhase(1);
