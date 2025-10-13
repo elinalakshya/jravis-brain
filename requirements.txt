@@ -1,24 +1,28 @@
-# Core Web Framework
+# ---- CORE FRAMEWORK ----
 Flask==3.0.3
 Fla==4.0.0
 Flask-Limiter==3.6.0
 
-# Scheduler & Automation
+# ---- SCHEDULER + UTILITIES ----
 APScheduler==3.10.4
 python-dotenv==1.0.1
 pytz==2024.1
-PyYAML==6.0.3
+PyYAML==6.0.2
 
-# PDF & Report Generation
-reportlab==4.1.0
+# ---- PDF + REPORTS ----
+reportlab==4.2.2
 pdfkit==1.0.0
 PyPDF2==3.0.1
 
-# AI + Integration
-openai==1.50.2
+# ---- AI + API ----
+openai==1.51.0
 requests==2.32.3
+httpx==0.27.2
+tenacity==9.0.0
 
-# System + Rich Console
+# ---- SYSTEM + CONSOLE ----
 rich==14.2.0
 gunicorn==23.0.0
+
+# ---- PLAYWRIGHT ----
 playwright==1.48.0
