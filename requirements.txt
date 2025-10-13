@@ -1,22 +1,24 @@
-flask
-python-dotenv
-reportlab
-openai
-gunicorn
-apscheduler
-pdfkit
-playwright
-pytz
-pyyaml
-rich
+# Core Web Framework
+Flask==3.0.3
+Fla==4.0.0
+Flask-Limiter==3.6.0
 
-Flask
-Fla
-Flask-Cors
-Flask-Limiter
-APScheduler
-PyPDF2
-pdfkit
-pytz
-gunicorn
-requests
+# Scheduler & Automation
+APScheduler==3.10.4
+python-dotenv==1.0.1
+pytz==2024.1
+PyYAML==6.0.3
+
+# PDF & Report Generation
+reportlab==4.1.0
+pdfkit==1.0.0
+PyPDF2==3.0.1
+
+# AI + Integration
+openai==1.50.2
+requests==2.32.3
+
+# System + Rich Console
+rich==14.2.0
+gunicorn==23.0.0
+playwright==1.48.0
