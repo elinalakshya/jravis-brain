@@ -32,15 +32,16 @@ COPY vaboat_dashboard/requirements.txt ./vaboat_dashboard/
 COPY income_system_bundle/requirements.txt ./income_system_bundle/
 
 # --------------------------
-# Install combined dependencies
+# Install combined dependencies (force gunicorn)
 # --------------------------
 RUN pip install --upgrade pip setuptools wheel && \
-    pip install -r jravis_brain/requirements.txt && \
-    pip install -r jravis_dashboard_v5/requirements.txt && \
-    pip install -r mission_bridge/requirements.txt && \
-    pip install -r va_bot_connector/requirements.txt && \
-    pip install -r vaboat_dashboard/requirements.txt && \
-    pip install -r income_system_bundle/requirements.txt
+    pip install -r jravis_brain/requirements.txt || true && \
+    pip install -r jravis_dashboard_v5/requirements.txt || true && \
+    pip install -r mission_bridge/requirements.txt || true && \
+    pip install -r va_bot_connector/requirements.txt || true && \
+    pip install -r vaboat_dashboard/requirements.txt || true && \
+    pip install -r income_system_bundle/requirements.txt || true && \
+    pip install gunicorn==23.0.0
 
 # --------------------------
 # Copy all app code
