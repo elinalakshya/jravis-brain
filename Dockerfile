@@ -20,4 +20,30 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     apt install -y /tmp/wkhtmltopdf.deb && \
     rm -rf /var/lib/apt/lists/* /tmp/wkhtmltopdf.deb
 
+# Install wkhtmltopdf from a verified binary tar.gz
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl build-essential ca-certificates fontconfig libfreetype6 libjpeg62-turbo libpng16-16 libx11-6 libxcb1 libxext6 libxrender1 xfonts-base xfonts-75dpi && \
+    curl -L -o /tmp/wkhtmltox.tar.xz https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox-0.12.6-1.amd64.tar.xz && \
+    tar -xf /tmp/wkhtmltox.tar.xz -C /opt && \
+    ln -s /opt/wkhtmltox/bin/wkhtmltopdf /usr/local/bin/wkhtmltopdf && \
+    ln -s /opt/wkhtmltox/bin/wkhtmltoimage /usr/local/bin/wkhtmltoimage && \
+    rm -rf /tmp/wkhtmltox.tar.xz /var/lib/apt/lists/*
+
+FROM python:3.12-slim
+WORKDIR /app
+
+# Install wkhtmltopdf binary (Render-safe)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl build-essential ca-certificates fontconfig libfreetype6 libjpeg62-turbo libpng16-16 libx11-6 libxcb1 libxext6 libxrender1 xfonts-base xfonts-75dpi && \
+    curl -L -o /tmp/wkhtmltox.tar.xz https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox-0.12.6-1.amd64.tar.xz && \
+    tar -xf /tmp/wkhtmltox.tar.xz -C /opt && \
+    ln -s /opt/wkhtmltox/bin/wkhtmltopdf /usr/local/bin/wkhtmltopdf && \
+    ln -s /opt/wkhtmltox/bin/wkhtmltoimage /usr/local/bin/wkhtmltoimage && \
+    rm -rf /tmp/wkhtmltox.tar.xz /var/lib/apt/lists/*
+
+COPY . .
+RUN pip install --upgrade pip setuptools wheel && pip install -r requirements.txt
+EXPOSE 10001
+CMD ["gunicorn", "jravis_brain:app", "--bind", "0.0.0.0:10001"]
+
 
