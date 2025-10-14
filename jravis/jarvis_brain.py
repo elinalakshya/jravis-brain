@@ -14,7 +14,28 @@ Each plan[] item must include: step_id, action, target, params, expected_result,
 Check long-term memory for Mission 2040 facts and set mission_check.aligns_with_2040 true|false and explain in notes.
 Return ONLY the JSON object."""
 
+from flask import Flask, jsonify
+from apscheduler.schedulers.background import BackgroundScheduler
+import datetime, logging
+
 app = Flask(__name__)
+scheduler = BackgroundScheduler()
+scheduler.start()
+
+
+@app.route('/health')
+def health():
+    return jsonify({
+        "status": "alive",
+        "time": datetime.datetime.now().isoformat()
+    })
+
+
+def heartbeat():
+    logging.info(f"💓 JRAVIS alive at {datetime.datetime.now().isoformat()}")
+
+
+scheduler.add_job(heartbeat, 'interval', seconds=60)
 
 
 def generate_plan(user_command, mission_context=""):
