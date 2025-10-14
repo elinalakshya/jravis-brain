@@ -1,24 +1,20 @@
-# Dockerfile - deterministic build with Python 3.12 slim
+# ==== Base Dockerfile for all JRAVIS + VA BOT services ====
 FROM python:3.12-slim
 
-ENV DEBIAN_FRONTEND=noninteractive
-ENV PORT=10000
 WORKDIR /app
 
-# system deps
+# Install essential system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    wkhtmltopdf ca-certificates curl build-essential \
- && rm -rf /var/lib/apt/lists/*
+    wkhtmltopdf curl build-essential ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
 
-# copy app
-COPY . /app
+# Copy code
+COPY . .
 
-# pip
-RUN python -m pip install --upgrade pip setuptools wheel
-RUN python -m pip install -r requirements.txt
+# Install Python dependencies
+RUN pip install --upgrade pip setuptools wheel && \
+    pip install -r requirements.txt
 
-# optional playwright browsers (if playwright used)
-RUN python -m playwright install --with-deps chromium || true
-
+# Default to JRAVIS Dashboard (Render overrides per service)
 EXPOSE 10000
 CMD ["gunicorn", "jravis_dashboard_v5:app", "--bind", "0.0.0.0:10000"]

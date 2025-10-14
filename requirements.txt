@@ -1,26 +1,24 @@
-# ---- CORE FRAMEWORK ----
+# ---- CORE ----
 Flask==3.0.3
-Flask-Limiter3.6.0
-Flask-Cors==4.0.0
-
-# ---- SCHEDULER + UTILITIES ----
+Fla==4.0.0
+Flask-Limiter==3.6.0
 APScheduler==3.10.4
 python-dotenv==1.0.1
 pytz==2024.1
 PyYAML==6.0.3
 
-# ---- PDF + REPORTS ----
+# ---- PDF / REPORTS ----
 reportlab==4.2.2
 pdfkit==1.0.0
 PyPDF2==3.0.1
 
-# ---- AI + API ----
+# ---- AI / API ----
 openai==1.51.0
 requests==2.32.3
 httpx==0.27.2
 tenacity==9.0.0
 
-# ---- SYSTEM + CONSOLE ----
+# ---- SYSTEM / CONSOLE ----
 rich==14.2.0
 gunicorn==23.0.0
 

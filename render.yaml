@@ -1,18 +1,64 @@
+# ==== MASTER RENDER CONFIG ====
+# Deploys all JRAVIS + VA BOT services under one unified repo
+
 services:
-- type: web
-  name: jravis-dashboard-v5
-  env: python
-  buildCommand: bash render-build.sh
-  startCommand: gunicorn jravis_dashboard_v5:app --bind 0.0.0.0:$PORT
-  plan: free
-  envVars:
-    - key: PYTHON_VERSION
-      value: 3.12.7
-    - key: PIP_NO_CACHE_DIR
-      value: "1"
-    - key: PYTHONUNBUFFERED
-      value: "1"
-    - key: PORT
-      value: "10000"
-    - key: LOCK_CODE
-      value: ""   # set your lock code here if needed
+  - type: web
+    name: jravis-dashboard-v5
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    envVars:
+      - key: PORT
+        value: "10000"
+      - key: LOCK_CODE
+        value: ""
+
+  - type: web
+    name: jravis-brain
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    envVars:
+      - key: PORT
+        value: "10001"
+    startCommand: gunicorn jravis_brain:app --bind 0.0.0.0:10001
+
+  - type: web
+    name: mission-bridge
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    envVars:
+      - key: PORT
+        value: "10002"
+    startCommand: gunicorn mission_bridge:app --bind 0.0.0.0:10002
+
+  - type: web
+    name: va-bot-connector
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    envVars:
+      - key: PORT
+        value: "10003"
+    startCommand: gunicorn va_bot_connector:app --bind 0.0.0.0:10003
+
+  - type: web
+    name: vabot-dashboard
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    envVars:
+      - key: PORT
+        value: "10004"
+    startCommand: gunicorn vabot_dashboard:app --bind 0.0.0.0:10004
+
+  - type: web
+    name: income-system-bundle
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    envVars:
+      - key: PORT
+        value: "10005"
+    startCommand: gunicorn income_system_bundle:app --bind 0.0.0.0:10005
