@@ -1,6 +1,6 @@
 # ---- CORE FRAMEWORK ----
 Flask==3.0.3
-Fla==3.6.0
+Flask-Limiter3.6.0
 Flask-Cors==4.0.0
 
 # ---- SCHEDULER + UTILITIES ----
