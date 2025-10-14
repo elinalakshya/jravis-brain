@@ -1,8 +1,8 @@
 # ==================================================
-# JRAVIS Dashboard v5 — Render-stable deployment (wkhtmltopdf fix)
+# JRAVIS Dashboard v5 — Render-safe Debian Bookworm version
 # ==================================================
 
-FROM python:3.12-slim
+FROM python:3.12-slim-bookworm
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -11,16 +11,12 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 
 # --------------------------
-# Install wkhtmltopdf (Ubuntu Jammy source, fully compatible)
+# Install wkhtmltopdf safely from Debian Bookworm repos
 # --------------------------
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-        curl wget gnupg ca-certificates software-properties-common \
-        fontconfig libjpeg62-turbo libpng16-16 libxrender1 libxext6 \
-        libx11-6 xfonts-base xfonts-75dpi && \
-    echo "deb http://archive.ubuntu.com/ubuntu/ jammy main universe" > /etc/apt/sources.list.d/jammy.list && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends wkhtmltopdf && \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    wkhtmltopdf curl wget gnupg ca-certificates \
+    fontconfig libjpeg62-turbo libpng16-16 libxrender1 libxext6 \
+    libx11-6 xfonts-base xfonts-75dpi && \
     wkhtmltopdf --version && \
     rm -rf /var/lib/apt/lists/*
 
