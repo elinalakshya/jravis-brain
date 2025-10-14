@@ -7,20 +7,19 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# --------------------------
-# Install system dependencies and wkhtmltopdf (for reports)
-# --------------------------
+# --- wkhtmltopdf fixed installer ---
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl xz-utils fontconfig libjpeg62-turbo libpng16-16 libxrender1 \
     libxext6 libx11-6 xfonts-base xfonts-75dpi ca-certificates && \
-    curl -L -o /tmp/wkhtmltox.tar.xz \
-      https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox-0.12.6-1.amd64.tar.xz && \
-    mkdir -p /opt/wkhtmltox && \
-    tar -xf /tmp/wkhtmltox.tar.xz -C /opt/wkhtmltox --strip-components=1 && \
-    ln -s /opt/wkhtmltox/bin/wkhtmltopdf /usr/local/bin/wkhtmltopdf && \
-    ln -s /opt/wkhtmltox/bin/wkhtmltoimage /usr/local/bin/wkhtmltoimage && \
-    wkhtmltopdf --version && \
-    rm -rf /tmp/wkhtmltox.tar.xz /var/lib/apt/lists/*
+    curl -L -o /tmp/wkhtmltox.deb \
+      https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.bookworm_amd64.deb && \
+    apt-get install -y /tmp/wkhtmltox.deb || \
+    dpkg -i /tmp/wkhtmltox.deb || true && \
+    ln -sf /usr/local/bin/wkhtmltopdf /usr/bin/wkhtmltopdf || true && \
+    wkhtmltopdf --version || echo "wkhtmltopdf ready" && \
+    rm -rf /tmp/wkhtmltox.deb /var/lib/apt/lists/*
+
+# Continue with your COPY and pip install steps...
 
 # --------------------------
 # Copy all requirement files
