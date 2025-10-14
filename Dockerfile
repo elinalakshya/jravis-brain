@@ -1,8 +1,8 @@
 # ============================================================
-# ✅ JRAVIS BRAIN - Render Compatible Dockerfile (FINAL FIX)
+# ✅ JRAVIS BRAIN - Render Compatible Dockerfile (Final 3.11 Bullseye Fix)
 # ============================================================
 
-FROM python:3.12-slim
+FROM python:3.11-bullseye
 
 WORKDIR /app
 
@@ -11,7 +11,7 @@ WORKDIR /app
 # ------------------------------------------------------------
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl xz-utils tar fontconfig libjpeg62-turbo libpng16-16 libxrender1 \
-    libxext6 libx11-6 xfonts-base xfonts-75dpi ca-certificates && \
+    libxext6 libx11-6 xfonts-base xfonts-75dpi ca-certificates libexpat1 && \
     curl -L -o /tmp/wkhtmltox.tar.xz \
       https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox-0.12.6-1.amd64.tar.xz && \
     mkdir -p /opt/wkhtmltox && \
@@ -40,3 +40,4 @@ ENV PORT=8080
 EXPOSE 8080
 
 CMD ["gunicorn", "jravis_brain:app", "--bind", "0.0.0.0:8080", "--timeout", "120"]
+
