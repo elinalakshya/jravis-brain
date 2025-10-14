@@ -1,33 +1,9 @@
-# ---- CORE ----
-Flask==3.0.3
-Flask-Cors==4.0.0
+# === Create 6 clean requirements.txt files for JRAVIS ecosystem ===
+
+mkdir -p jravis_brain jravis_dashboard_v5 mission_bridge va_bot_connector vaboat_dashboard income_system_bundle
+
+echo 'Flask==3.0.3
 Flask-Limiter==3.6.0
-APScheduler==3.10.4
-python-dotenv==1.0.1
-pytz==2024.1
-PyYAML==6.0.3
-
-# ---- PDF / REPORTS ----
-reportlab==4.2.2
-pdfkit==1.0.0
-PyPDF2==3.0.1
-
-# ---- AI / API ----
-openai==1.51.0
-requests==2.32.3
-httpx==0.27.2
-tenacity==9.0.0
-
-# ---- SYSTEM / CONSOLE ----
-rich==13.9.2
-gunicorn==23.0.0
-
-# ---- PLAYWRIGHT (optional) ----
-playwright==1.48.0
-
-# ---- Core ----
-Flask==3.0.3
-Flask-Limiter3.6.0
 APScheduler==3.10.4
 python-dotenv==1.0.1
 pytz==2024.1
@@ -35,10 +11,62 @@ PyYAML==6.0.2
 requests==2.32.3
 httpx==0.27.2
 tenacity==9.0.0
-rich==13.9.2
 gunicorn==23.0.0
+rich==13.9.2' > jravis_brain/requirements.txt
+
+echo 'Flask==3.0.3
+Flask-Limiter==3.6.0
+Flask-Cors==4.0.0
+python-dotenv==1.0.1
+APScheduler==3.10.4
+PyYAML==6.0.2
+pytz==2024.1
 reportlab==4.2.2
 pdfkit==1.0.0
 PyPDF2==3.0.1
 openai==1.51.0
-playwright==1.48.0
+requests==2.32.3
+httpx==0.27.2
+tenacity==9.0.0
+gunicorn==23.0.0
+rich==13.9.2
+playwright==1.48.0' > jravis_dashboard_v5/requirements.txt
+
+echo 'Flask==3.0.3
+requests==2.32.3
+httpx==0.27.2
+PyYAML==6.0.2
+gunicorn==23.0.0
+python-dotenv==1.0.1' > mission_bridge/requirements.txt
+
+echo 'Flask==3.0.3
+requests==2.32.3
+httpx==0.27.2
+PyYAML==6.0.2
+tenacity==9.0.0
+python-dotenv==1.0.1
+gunicorn==23.0.0
+rich==13.9.2' > va_bot_connector/requirements.txt
+
+echo 'Flask==3.0.3
+Flask-Cors==4.0.0
+APScheduler==3.10.4
+python-dotenv==1.0.1
+pytz==2024.1
+PyYAML==6.0.2
+gunicorn==23.0.0
+rich==13.9.2' > vaboat_dashboard/requirements.txt
+
+echo 'Flask==3.0.3
+requests==2.32.3
+httpx==0.27.2
+openai==1.51.0
+PyYAML==6.0.2
+python-dotenv==1.0.1
+reportlab==4.2.2
+pdfkit==1.0.0
+PyPDF2==3.0.1
+gunicorn==23.0.0
+rich==13.9.2' > income_system_bundle/requirements.txt
+
+echo "✅ All six JRAVIS system requirement files created successfully!"
