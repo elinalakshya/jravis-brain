@@ -1,4 +1,14 @@
-# ✅ Install wkhtmltopdf safely (no .deb, no libssl)
+# ============================================================
+# ✅ JRAVIS BRAIN - Render Compatible Dockerfile (FINAL FIX)
+# ============================================================
+
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# ------------------------------------------------------------
+# 1️⃣ Install wkhtmltopdf safely (no .deb / no libssl1.1 issue)
+# ------------------------------------------------------------
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl xz-utils tar fontconfig libjpeg62-turbo libpng16-16 libxrender1 \
     libxext6 libx11-6 xfonts-base xfonts-75dpi ca-certificates && \
@@ -11,3 +21,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wkhtmltopdf --version || echo "wkhtmltopdf installed ✅" && \
     rm -rf /tmp/wkhtmltox.tar.xz /var/lib/apt/lists/*
 
+# ------------------------------------------------------------
+# 2️⃣ Install Python Dependencies
+# ------------------------------------------------------------
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir -r requirements.txt
+
+# ------------------------------------------------------------
+# 3️⃣ Copy All Project Files
+# ------------------------------------------------------------
+COPY . .
+
+# ------------------------------------------------------------
+# 4️⃣ Expose Port & Start Command
+# ------------------------------------------------------------
+ENV PORT=8080
+EXPOSE 8080
+
+CMD ["gunicorn", "jravis_brain:app", "--bind", "0.0.0.0:8080", "--timeout", "120"]
