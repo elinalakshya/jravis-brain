@@ -1,12 +1,13 @@
 # ---- CORE FRAMEWORK ----
 Flask==3.0.3
-Flask-Limiter==3.6.0
+Fla==3.6.0
+Flask-Cors==4.0.0
 
 # ---- SCHEDULER + UTILITIES ----
 APScheduler==3.10.4
 python-dotenv==1.0.1
 pytz==2024.1
-PyYAML==6.0.2
+PyYAML==6.0.3
 
 # ---- PDF + REPORTS ----
 reportlab==4.2.2
@@ -23,23 +24,5 @@ tenacity==9.0.0
 rich==14.2.0
 gunicorn==23.0.0
 
-# ---- PLAYWRIGHT ----
+# ---- PLAYWRIGHT (optional) ----
 playwright==1.48.0
-
-Flask==3.0.3
-gunicorn==23.0.0
-
-
-Flask>=3.0.0,<4.0.0
-Fla>=4.0.0,<5.0.0
-APScheduler>=3.10.4,<4.0.0
-python-dotenv>=1.0.1,<2.0.0
-pytz>=2024.1
-PyYAML>=6.0.3
-reportlab>=4.2.2
-pdfkit>=1.0.0
-PyPDF2>=3.0.1
-openai>=1.0.0
-requests>=2.31.0
-rich>=14.0.0
-gunicorn>=21.0.0
