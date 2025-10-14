@@ -1,5 +1,5 @@
 # ==================================================
-# JRAVIS Dashboard v5 — Render-safe Unified Deployment (FINAL FIX)
+# JRAVIS Dashboard v5 — Render-stable deployment (wkhtmltopdf fix)
 # ==================================================
 
 FROM python:3.12-slim
@@ -11,16 +11,18 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 
 # --------------------------
-# Install wkhtmltopdf safely (Render + Debian-compatible)
+# Install wkhtmltopdf (Ubuntu Jammy source, fully compatible)
 # --------------------------
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    wget gnupg ca-certificates fontconfig libjpeg62-turbo libpng16-16 \
-    libxrender1 libxext6 libx11-6 xfonts-base xfonts-75dpi && \
-    wget -O /tmp/wkhtmltox.deb \
-      https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.buster_amd64.deb && \
-    apt-get install -y /tmp/wkhtmltox.deb && \
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        curl wget gnupg ca-certificates software-properties-common \
+        fontconfig libjpeg62-turbo libpng16-16 libxrender1 libxext6 \
+        libx11-6 xfonts-base xfonts-75dpi && \
+    echo "deb http://archive.ubuntu.com/ubuntu/ jammy main universe" > /etc/apt/sources.list.d/jammy.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends wkhtmltopdf && \
     wkhtmltopdf --version && \
-    rm -rf /tmp/wkhtmltox.deb /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/*
 
 # --------------------------
 # Copy requirements
@@ -47,7 +49,7 @@ RUN pip install --upgrade pip setuptools wheel && \
         requests==2.32.3 pytz==2024.1 rich==13.7.1
 
 # --------------------------
-# Copy source code
+# Copy all source code
 # --------------------------
 COPY . .
 
