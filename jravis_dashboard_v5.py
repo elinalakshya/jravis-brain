@@ -2,307 +2,335 @@
 """
 JRAVIS Dashboard v5
 Single-file Flask app to serve a simple Mission 2040 dashboard.
+
 Features:
-- / -> Dashboard HTML
+- / -> simple JSON dashboard summary (HTML could be plugged in)
+- /health -> simple health check
 - /api/live_progress -> JSON progress data
-- /api/live_logs -> list of log lines
+- /api/live_logs -> list of recent log lines (JSON array)
 - /api/command -> POST to send a command (returns JSON)
 - /api/trigger -> POST to trigger all streams (returns text)
 - Background scheduler (APScheduler) to simulate progress updates
 - Optional LOCK_CODE via environment variable (simple protection)
 
-Dependencies (from requirements): Flask, APScheduler, PyYAML (optional), gunicorn
-
+Dependencies: Flask, APScheduler, (optional) PyYAML for config
 This file is intentionally self-contained and safe to deploy.
 """
+from __future__ import annotations
 
 import os
 import sys
 import time
 import json
 import logging
-from datetime import datetime
-from threading import Lock
-from textwrap import dedent
+import threading
+from collections import deque
+from datetime import datetime, timezone
+from typing import Dict, Any, List
 
-from flask import Flask, request, jsonify, make_response, abort
-from apscheduler.schedulers.background import BackgroundScheduler
+from flask import Flask, jsonify, request, abort, make_response
 
-# ---------- Configuration ----------
+try:
+    from apscheduler.schedulers.background import BackgroundScheduler
+except Exception as e:
+    # Friendly error if APScheduler is missing
+    raise RuntimeError(
+        "APScheduler is required. Install APScheduler in your environment."
+    ) from e
+
+# ---------------------------
+# Basic config & Flask app
+# ---------------------------
 APP_NAME = "JRAVIS Dashboard v5"
-LOCK_CODE = os.getenv("LOCK_CODE",
-                      "")  # if set, APIs requiring lock will validate
-PORT = int(os.getenv("PORT", "10000"))
+LOG_MAX_LINES = int(os.environ.get("LOG_MAX_LINES", "200"))
+PROGRESS_STEP = float(os.environ.get("PROGRESS_STEP",
+                                     "1.0"))  # percent per tick
+PROGRESS_TICK_SECONDS = int(os.environ.get("PROGRESS_TICK_SECONDS",
+                                           "10"))  # scheduler interval
+LOCK_CODE = os.environ.get("LOCK_CODE")  # optional simple protection
 
-# Simple in-memory state used by endpoints and scheduler
-_state = {
-    "progress_percent": 0,
+app = Flask(__name__)
+logger = logging.getLogger(APP_NAME)
+logging.basicConfig(level=logging.INFO,
+                    format="%(asctime)s [%(levelname)s] %(message)s")
+
+# ---------------------------
+# In-memory state (thread-safe)
+# ---------------------------
+_state_lock = threading.Lock()
+
+_state: Dict[str, Any] = {
+    "progress_percent": 0.0,
     "total_income": 0,
     "daily_income": 0,
     "last_loop": None,
-    "logs": [],
-    "streams": [],
+    "streams_triggered": 0,
+    "phase": 1,
 }
-_state_lock = Lock()
 
-# Configure logging
-logging.basicConfig(level=logging.INFO,
-                    format="%(asctime)s %(levelname)s %(message)s")
-logger = logging.getLogger("jravis")
-
-# ---------- Flask app ----------
-app = Flask(__name__)
+_logs: deque[str] = deque(maxlen=LOG_MAX_LINES)
 
 
-# Helper: require lock code if set
-def check_lock(req):
+# ---------------------------
+# Helpers
+# ---------------------------
+def now_iso() -> str:
+    return datetime.now(timezone.utc).astimezone().isoformat()
+
+
+def append_log(line: str) -> None:
+    ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+    entry = f"[{ts}] {line}"
+    with _state_lock:
+        _logs.append(entry)
+    logger.info(entry)
+
+
+def get_logs(limit: int = 100) -> List[str]:
+    with _state_lock:
+        # Return newest-first for UI convenience (client can reverse)
+        return list(_logs)[-limit:]
+
+
+def money_fmt(amount: float) -> str:
+    try:
+        return f"{int(amount):,}"
+    except Exception:
+        return str(amount)
+
+
+def check_lock(payload: Dict | None = None) -> bool:
+    """
+    If LOCK_CODE is set in env, require either:
+    - Header 'X-Lock' matching LOCK_CODE OR
+    - JSON body field 'lock' matching LOCK_CODE
+    Otherwise allow.
+    """
     if not LOCK_CODE:
         return True
-    # Accept lock via header or JSON/body param
-    hdr = req.headers.get("X-LOCK-CODE")
-    if hdr and hdr == LOCK_CODE:
+    header = request.headers.get("X-Lock")
+    if header and header == LOCK_CODE:
         return True
-    try:
-        j = req.get_json(silent=True) or {}
-        if j.get("lock_code") == LOCK_CODE:
+    if payload and isinstance(payload, dict):
+        lock_field = payload.get("lock")
+        if lock_field and str(lock_field) == LOCK_CODE:
             return True
-    except Exception:
-        pass
     return False
 
 
-# Helper: append log line
-def append_log(line: str):
-    with _state_lock:
-        t = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        entry = f"[{t}] {line}"
-        _state["logs"].append(entry)
-        # Keep logs manageable
-        if len(_state["logs"]) > 1000:
-            _state["logs"] = _state["logs"][-1000:]
-        logger.info(line)
-
-
-# Simulate progress update (called by scheduler)
+# ---------------------------
+# Scheduler job: heartbeat + progress update
+# ---------------------------
 def scheduler_tick():
+    """
+    Periodic job run by APScheduler.
+    Updates progress and income metrics, writes logs.
+    """
+    try:
+        with _state_lock:
+            # Update progress
+            prev = _state.get("progress_percent", 0.0)
+            new = prev + PROGRESS_STEP
+            if new >= 100.0:
+                new = 0.0  # rollover when reaching 100
+                _state["streams_triggered"] += 1
+                append_log(
+                    f"Progress reached 100% — loop completed (loops: {_state['streams_triggered']})"
+                )
+            _state["progress_percent"] = round(new, 3)
+
+            # Simulate income increases
+            inc = PROGRESS_STEP * 10.0  # raw simulation
+            _state["total_income"] = int((_state.get("total_income", 0) or 0) +
+                                         inc)
+            _state["daily_income"] = int((_state.get("daily_income", 0) or 0) +
+                                         inc / 6.0)
+
+            _state["last_loop"] = now_iso()
+            pct = _state["progress_percent"]
+
+        append_log(
+            f"Scheduler tick — progress now {pct}%; total_income INR {money_fmt(_state['total_income'])}"
+        )
+    except Exception as e:
+        logger.exception("Error in scheduler_tick: %s", e)
+
+
+# Start scheduler with safe defaults
+scheduler = BackgroundScheduler(job_defaults={
+    "max_instances": 2,
+    "coalesce": True,
+    "misfire_grace_time": 30
+})
+scheduler.add_job(scheduler_tick,
+                  "interval",
+                  seconds=PROGRESS_TICK_SECONDS,
+                  id="scheduler_tick",
+                  next_run_time=datetime.now())
+scheduler.start()
+logger.info("Scheduler started")
+
+
+# ---------------------------
+# Flask routes
+# ---------------------------
+@app.route("/health", methods=["GET"])
+def health():
+    """Simple health endpoint used by Render or load balancers."""
+    return jsonify({"status": "ok", "time": now_iso()})
+
+
+@app.route("/", methods=["GET"])
+def dashboard():
+    """Return a concise JSON dashboard summary (UI can be swapped in later)."""
     with _state_lock:
-        # increment progress slowly, and simulate income
-        pct = _state.get("progress_percent", 0)
-        if pct < 100:
-            pct = min(100, pct + 1)
-            _state["progress_percent"] = pct
-            inc = 1000 + int(pct * 10)
-            _state["daily_income"] = _state.get("daily_income", 0) + inc
-            _state["total_income"] = _state.get("total_income", 0) + inc
-            _state["last_loop"] = datetime.now().isoformat()
-            append_log(f"Auto tick: progress {pct}%, +{inc} income")
-        else:
-            append_log("Auto tick: progress at 100% — idle")
+        snapshot = {
+            "system": APP_NAME,
+            "time": now_iso(),
+            "progress_percent": _state.get("progress_percent", 0.0),
+            "total_income": _state.get("total_income", 0),
+            "daily_income": _state.get("daily_income", 0),
+            "last_loop": _state.get("last_loop"),
+            "phase": _state.get("phase", 1),
+            "streams_triggered": _state.get("streams_triggered", 0),
+        }
+    return jsonify(snapshot)
 
 
-# Start background scheduler
-sched = BackgroundScheduler()
-sched.add_job(scheduler_tick, "interval", seconds=10, id="progress_tick")
-sched.start()
-append_log("Scheduler started")
-
-
-# ---------- Endpoints ----------
-@app.get("/")
-def index():
-    # Serve an inline HTML dashboard (simple, no templates)
-    html = dedent('''
-    <!doctype html>
-    <html lang="en">
-    <head>
-      <meta charset="utf-8">
-      <meta name="viewport" content="width=device-width,initial-scale=1">
-      <title>JRAVIS v5 - Mission 2040</title>
-      <style>
-        body{font-family:system-ui,Arial,Helvetica,sans-serif;background:#0d1117;color:#c9d1d9;margin:0;padding:0}
-        .container{max-width:1100px;margin:20px auto;padding:18px}
-        .card{background:#0b1220;border-radius:8px;padding:14px;margin-bottom:12px;box-shadow:0 6px 18px rgba(0,0,0,0.4)}
-        .row{display:flex;gap:12px;align-items:center}
-        .progress{background:#17202a;border-radius:6px;height:26px;overflow:hidden}
-        .progress > .bar{height:100%;background:linear-gradient(90deg,#6ee7b7,#3b82f6);width:0}
-        .muted{color:#8b949e;font-size:0.9rem}
-        #logbox{height:220px;overflow:auto;background:#071018;padding:10px;border-radius:6px}
-        input,button{padding:8px;border-radius:6px;border:1px solid #233244;background:#071722;color:#e6eef8}
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <h2>JRAVIS Dashboard v5 — Mission 2040</h2>
-        <div class="card">
-          <div style="display:flex;justify-content:space-between;align-items:center">
-            <div>
-              <div class="muted">Progress</div>
-              <div class="progress" aria-hidden>
-                <div id="progress-bar" class="bar" style="width:0%"></div>
-              </div>
-              <div id="progress-text" class="muted">0%</div>
-            </div>
-            <div style="text-align:right">
-              <div class="muted">Monthly</div>
-              <div id="monthly">INR 0</div>
-              <div class="muted">Daily</div>
-              <div id="daily">INR 0</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="card">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start">
-            <div style="flex:1;margin-right:12px">
-              <div class="muted">Logs</div>
-              <div id="logbox"></div>
-            </div>
-            <div style="width:280px">
-              <div class="muted">Send Command</div>
-              <input id="chat-input" placeholder="Type command (e.g. 'phase 1' or 'trigger all')" style="width:100%" />
-              <div style="height:8px"></div>
-              <button onclick="sendCmd()">Send</button>
-              <button onclick="triggerAll()" style="margin-left:6px">Trigger All</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="card muted">Last loop: <span id="last-loop">--</span></div>
-      </div>
-
-    <script>
-    async function updateProgress(){
-      try{
-        const res = await fetch('/api/live_progress');
-        const data = await res.json();
-        const pct = data.progress_percent || 0;
-        document.getElementById('progress-bar').style.width = pct + '%';
-        document.getElementById('progress-text').innerText = pct + '%';
-        document.getElementById('monthly').innerText = 'INR ' + ((data.total_income||0).toLocaleString());
-        document.getElementById('daily').innerText = 'INR ' + ((data.daily_income||0).toLocaleString ? data.daily_income.toLocaleString() : data.total_income||0);
-        document.getElementById('last-loop').innerText = data.last_loop || '--';
-      }catch(e){console.log('progress fetch failed', e)}
-    }
-
-    async function refreshLogs(){
-      try{
-        const res = await fetch('/api/live_logs');
-        const lines = await res.json();
-        const box = document.getElementById('logbox');
-        box.innerHTML = lines.map(l => '<div>'+l.replace(/</g,'&lt;')+'</div>').join('');
-        box.scrollTop = box.scrollHeight;
-      }catch(e){console.log('log fetch failed', e)}
-    }
-
-    async function sendCmd(){
-      const v = document.getElementById('chat-input').value.trim();
-      if(!v) return;
-      if(v.toLowerCase().startsWith('phase')){
-        // client-side helper: just show phase
-        alert('Phase switch: ' + v);
-        document.getElementById('chat-input').value = '';
-        return;
-      }
-      try{
-        const res = await fetch('/api/command', {
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({cmd:v})
-        });
-        const j = await res.json();
-        alert('Sent: '+ JSON.stringify(j));
-      }catch(e){alert('send failed');}
-      document.getElementById('chat-input').value = '';
-    }
-
-    async function triggerAll(){
-      try{
-        const res = await fetch('/api/trigger', {method:'POST'});
-        const txt = await res.text();
-        alert('Triggered: '+txt);
-      }catch(e){alert('Trigger failed');}
-    }
-
-    // initial
-    updateProgress();
-    refreshLogs();
-    setInterval(updateProgress, 15000);
-    setInterval(refreshLogs, 5000);
-    </script>
-    </body>
-    </html>
-    ''')
-    return make_response(html)
-
-
-@app.get('/api/live_progress')
+@app.route("/api/live_progress", methods=["GET"])
 def api_live_progress():
     with _state_lock:
         data = {
-            "progress_percent": _state.get("progress_percent", 0),
+            "progress_percent": _state.get("progress_percent", 0.0),
             "total_income": _state.get("total_income", 0),
             "daily_income": _state.get("daily_income", 0),
-            "last_loop": _state.get("last_loop", None),
+            "last_loop": _state.get("last_loop"),
+            "phase": _state.get("phase", 1),
+            "streams_triggered": _state.get("streams_triggered", 0),
         }
     return jsonify(data)
 
 
-@app.get('/api/live_logs')
+@app.route("/api/live_logs", methods=["GET"])
 def api_live_logs():
-    # returns list of recent log lines
-    with _state_lock:
-        logs = list(_state.get('logs', [])[-200:])
+    # Return most recent logs (client can poll and update)
+    limit = int(request.args.get("limit", "200"))
+    logs = get_logs(limit=limit)
     return jsonify(logs)
 
 
-@app.post('/api/command')
+@app.route("/api/command", methods=["POST"])
 def api_command():
-    if not check_lock(request):
-        return make_response('Locked', 403)
-    j = request.get_json(silent=True) or {}
-    cmd = j.get('cmd') or ''
+    """
+    Accepts JSON: {"cmd": "<text>", "lock": "<code>" (optional if LOCK_CODE set)}
+    Recognized commands:
+      - "phase <n>" : set dashboard phase
+      - "reset" : reset progress counters
+      - "status" : returns current status
+      - "trigger all" : triggers streams (same as /api/trigger)
+    """
+    if not request.is_json:
+        return make_response(jsonify({"error": "expected JSON body"}), 400)
+    payload = request.get_json()
+    if not check_lock(payload):
+        return make_response(jsonify({"error": "invalid lock code"}), 403)
+
+    cmd = (payload.get("cmd") or "").strip()
     if not cmd:
-        return jsonify({'status': 'error', 'message': 'no cmd provided'})
-    append_log(f"Manual command: {cmd}")
-    # handle a couple of commands locally
-    if cmd.lower().startswith('add '):
-        try:
-            val = int(cmd.split()[1])
-            with _state_lock:
-                _state['total_income'] = _state.get('total_income', 0) + val
-            return jsonify({'status': 'ok', 'added': val})
-        except Exception:
-            return jsonify({'status': 'error', 'message': 'invalid add value'})
-    return jsonify({'status': 'ok', 'cmd': cmd})
+        return make_response(jsonify({"error": "no cmd provided"}), 400)
+
+    lower = cmd.lower()
+    resp: Dict[str, Any] = {"cmd": cmd, "time": now_iso()}
+
+    if lower.startswith("phase"):
+        # parse number
+        parts = cmd.split()
+        n = 1
+        if len(parts) >= 2:
+            try:
+                n = int(parts[1])
+            except Exception:
+                n = 1
+        with _state_lock:
+            _state["phase"] = n
+        append_log(f"Manual command: set phase -> {n}")
+        resp["result"] = f"phase set to {n}"
+
+    elif lower == "reset":
+        with _state_lock:
+            _state["progress_percent"] = 0.0
+            _state["total_income"] = 0
+            _state["daily_income"] = 0
+            _state["streams_triggered"] = 0
+        append_log("Manual command: reset progress and income counters")
+        resp["result"] = "reset done"
+
+    elif "trigger all" in lower or lower == "trigger":
+        # delegate to trigger endpoint behavior
+        perform_trigger_actions()
+        resp["result"] = "triggered"
+    elif lower == "status":
+        with _state_lock:
+            resp["status"] = {
+                "progress_percent": _state["progress_percent"],
+                "total_income": _state["total_income"],
+                "daily_income": _state["daily_income"],
+                "phase": _state["phase"],
+            }
+    else:
+        append_log(f"Unknown command received: {cmd}")
+        resp["result"] = "unknown command"
+
+    return jsonify(resp)
 
 
-@app.post('/api/trigger')
-def api_trigger():
-    if not check_lock(request):
-        return make_response('Locked', 403)
-    # Simulate triggering streams: we'll append a log and bump progress slightly
-    append_log('Trigger: manual trigger requested')
+def perform_trigger_actions():
+    """Simulate triggers across streams — safe to call from endpoints or scheduler."""
     with _state_lock:
-        _state['progress_percent'] = min(100,
-                                         _state.get('progress_percent', 0) + 2)
-        _state['total_income'] = _state.get('total_income', 0) + 5000
-    return make_response('OK')
+        _state["streams_triggered"] = _state.get("streams_triggered", 0) + 1
+        bonus = 500  # simulate bonus income for a trigger
+        _state["total_income"] = int((_state.get("total_income", 0) or 0) +
+                                     bonus)
+        _state["daily_income"] = int((_state.get("daily_income", 0) or 0) +
+                                     bonus / 6.0)
+        _state["last_loop"] = now_iso()
+    append_log(f"Triggered all streams (manual). Bonus INR {bonus}")
 
 
-# Graceful shutdown of scheduler on exit
+@app.route("/api/trigger", methods=["POST"])
+def api_trigger():
+    # simple trigger endpoint, protected by LOCK_CODE if set
+    if not check_lock():
+        return make_response("invalid lock code", 403)
+    perform_trigger_actions()
+    return "triggered"
+
+
+# ---------------------------
+# Graceful shutdown handling
+# ---------------------------
+def _shutdown_scheduler():
+    try:
+        if scheduler and scheduler.running:
+            scheduler.shutdown(wait=False)
+            logger.info("Scheduler shut down gracefully")
+    except Exception:
+        logger.exception("Error shutting down scheduler")
+
+
 import atexit
 
+atexit.register(_shutdown_scheduler)
 
-@atexit.register
-def shutdown():
+# ---------------------------
+# CLI / run guard for local testing
+# ---------------------------
+if __name__ == "__main__":
+    # Local dev run; Render and gunicorn will import this module and use `app`
+    logger.info(f"Starting {APP_NAME} (dev mode)")
     try:
-        sched.shutdown(wait=False)
+        port = int(os.environ.get("PORT", 8080))
     except Exception:
-        pass
-
-
-# Allow running with `python jravis_dashboard_v5.py` for local testing
-if __name__ == '__main__':
-    logger.info('Starting JRAVIS Dashboard (local)')
-    # development server only
-    app.run(host='0.0.0.0', port=PORT, debug=False)
+        port = 8080
+    # Development server: not for production use — Gunicorn will be used in production
+    app.run(host="0.0.0.0", port=port)
