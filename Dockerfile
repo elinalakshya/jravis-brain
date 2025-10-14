@@ -1,7 +1,7 @@
 FROM python:3.12-slim
 WORKDIR /app
 
-# Copy and run wkhtmltopdf installer
+# Copy and run wkhtml installer
 COPY install_wkhtml.sh .
 RUN bash install_wkhtml.sh
 
