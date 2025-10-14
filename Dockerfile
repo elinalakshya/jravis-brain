@@ -1,10 +1,10 @@
 FROM python:3.12-slim
 WORKDIR /app
 
-# Install wkhtmltopdf safely
+# Install wkhtmltopdf (Render-safe final fix)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl xfonts-base xfonts-75dpi libjpeg62-turbo fontconfig libxrender1 libxext6 libx11-6 ca-certificates && \
-    curl -L -o /tmp/wkhtmltox.tar.xz https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox-0.12.6-1.alpine3.17-amd64.tar.xz && \
+    curl xz-utils fontconfig libjpeg62-turbo libpng16-16 libxrender1 libxext6 libx11-6 xfonts-base xfonts-75dpi ca-certificates && \
+    curl -L -o /tmp/wkhtmltox.tar.xz https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox-0.12.6-1.amd64.tar.xz && \
     mkdir -p /opt/wkhtmltox && \
     tar -xf /tmp/wkhtmltox.tar.xz -C /opt/wkhtmltox --strip-components=1 && \
     ln -s /opt/wkhtmltox/bin/wkhtmltopdf /usr/local/bin/wkhtmltopdf && \
