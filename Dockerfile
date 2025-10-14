@@ -31,8 +31,9 @@ COPY va_bot_connector/requirements.txt ./va_bot_connector/
 COPY vaboat_dashboard/requirements.txt ./vaboat_dashboard/
 COPY income_system_bundle/requirements.txt ./income_system_bundle/
 
+
 # --------------------------
-# Install combined dependencies (force gunicorn)
+# Install all dependencies (resilient mode)
 # --------------------------
 RUN pip install --upgrade pip setuptools wheel && \
     pip install -r jravis_brain/requirements.txt || true && \
@@ -41,7 +42,9 @@ RUN pip install --upgrade pip setuptools wheel && \
     pip install -r va_bot_connector/requirements.txt || true && \
     pip install -r vaboat_dashboard/requirements.txt || true && \
     pip install -r income_system_bundle/requirements.txt || true && \
-    pip install gunicorn==23.0.0
+    # ✅ Force-install core modules used by all streams
+    pip install gunicorn==23.0.0 pdfkit==1.0.0 PyPDF2==3.0.1 reportlab==4.2.2 openai==1.51.0 pytz==2024.1 requests==2.32.3
+
 
 # --------------------------
 # Copy all app code
