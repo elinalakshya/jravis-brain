@@ -3,6 +3,8 @@ from email.message import EmailMessage
 from fpdf import FPDF
 from datetime import datetime
 
+print("🚀 Starting JRAVIS Mission 2040 Report Worker...")
+
 LOCK_CODE = os.getenv("LOCK_CODE", "204040")
 EMAIL_USER = os.getenv("EMAIL_USER")
 EMAIL_PASS = os.getenv("App_password")
