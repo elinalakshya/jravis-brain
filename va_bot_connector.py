@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-vabot_connector.py
+va_bot_connector.py
 VA Bot receiver and callback bridge for JRAVIS Dashboard v3.1
 --------------------------------------------------------------
 
@@ -12,20 +12,39 @@ Environment variables:
 """
 
 from flask import Flask, request, jsonify
-import os, json, requests, traceback, time
+import logging, os, time, traceback, requests
 from datetime import datetime
 
+# Load environment
+SHARED_KEY = os.getenv("SHARED_KEY", "LakshyaSecure2040")
+JRAVIS_URL = os.getenv("JRAVIS_URL", "https://jravis-dashboard.onrender.com")
+
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "vabot_secret_key")
-
-SHARED_KEY = os.environ.get("SHARED_KEY", "change-this-securely")
-JRAVIS_URL = os.environ.get(
-    "JRAVIS_URL", "https://jravis-dashboard.onrender.com").rstrip("/")
+logging.basicConfig(level=logging.INFO)
 
 
-# simple log
-def log(*a):
-    print("[VA BOT]", *a)
+@app.route('/execute', methods=['POST'])
+def execute_task():
+    """Receive automation plans from JRAVIS or Auto-Key Worker"""
+    try:
+        data = request.get_json(force=True)
+        plan_id = data.get("plan_id", "N/A")
+        stream = data.get("stream", "unknown")
+        logging.info(
+            f"[VA BOT] Received task for stream: {stream}, plan_id: {plan_id}")
+
+        # Simulate VA Bot accepting the task
+        response = {
+            "status": "accepted",
+            "plan_id": plan_id,
+            "stream": stream,
+            "message": f"VA Bot accepted plan for {stream}"
+        }
+        return jsonify(response), 200
+
+    except Exception as e:
+        logging.error(f"Error executing task: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 # ------------------------------
@@ -39,7 +58,7 @@ def receive_task():
         return jsonify({"error": "unauthorized"}), 401
 
     payload = request.get_json(force=True)
-    log("Received task from JRAVIS:", payload)
+    logging.info(f"[VA BOT] Received task from JRAVIS: {payload}")
 
     try:
         action = payload.get("action")
@@ -47,7 +66,9 @@ def receive_task():
         phase = payload.get("phase")
 
         # simulate / trigger work
-        log(f"Executing → action={action} stream={stream} phase={phase}")
+        logging.info(
+            f"[VA BOT] Executing → action={action} stream={stream} phase={phase}"
+        )
         time.sleep(2)
 
         status = {
@@ -78,9 +99,10 @@ def send_status_to_jravis(status):
             "Content-Type": "application/json"
         }
         r = requests.post(url, json=status, headers=headers, timeout=15)
-        log("Callback sent to JRAVIS:", r.status_code, r.text)
+        logging.info(
+            f"[VA BOT] Callback sent to JRAVIS: {r.status_code} {r.text}")
     except Exception as e:
-        log("Callback error:", e)
+        logging.error(f"[VA BOT] Callback error: {e}")
 
 
 # ------------------------------
@@ -95,6 +117,6 @@ def health():
 
 
 if __name__ == "__main__":
-    log("VA Bot Connector ready")
+    logging.info("[VA BOT] VA Bot Connector ready")
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
