@@ -1,11 +1,11 @@
-import json
-import io
-from fpdf import FPDF
+import os
 import smtplib
+import schedule
+import time
 from email.message import EmailMessage
+from fpdf import FPDF
 from datetime import datetime
 import requests
-import logging
 
 
 # send_email_with_pdfs() - generate PDFs from memory and send via SMTP
@@ -59,8 +59,10 @@ def send_email_with_pdfs():
     # 3) Create Summary PDF
     def build_summary_pdf():
         pdf = FPDF()
+        pdf.set_auto_page_break(auto=True, margin=15)
         pdf.add_page()
         pdf.set_font("Arial", "B", 16)
+        pdf.set_doc_option("core_fonts_encoding", "utf-8")
         pdf.cell(0, 10, "Mission 2040 — Daily Summary", ln=True)
         pdf.set_font("Arial", "", 11)
         pdf.ln(4)
@@ -114,8 +116,10 @@ def send_email_with_pdfs():
     # 4) Create Invoice PDF (simple aggregated invoice)
     def build_invoice_pdf():
         pdf = FPDF()
+        pdf.set_auto_page_break(auto=True, margin=15)
         pdf.add_page()
         pdf.set_font("Arial", "B", 16)
+        pdf.set_doc_option("core_fonts_encoding", "utf-8")
         pdf.cell(0, 10, "Mission 2040 — Invoice Pack", ln=True)
         pdf.ln(6)
         pdf.set_font("Arial", "", 11)
