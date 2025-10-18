@@ -1,318 +1,247 @@
-import smtplib, os, schedule, time
-from email.message import EmailMessage
+import json
+import io
 from fpdf import FPDF
+import smtplib
+from email.message import EmailMessage
 from datetime import datetime
-
-import sys, traceback
-
-sys.stdout.reconfigure(line_buffering=True)
-
-print(">>> Debug: Mission 2040 worker starting (Render test)", flush=True)
-
-try:
-  # the rest of your code goes here
-  LOCK_CODE = os.getenv("LOCK_CODE", "204040")
-  EMAIL_USER = os.getenv("EMAIL_USER")
-  EMAIL_PASS = os.getenv("App_password")
-  RECEIVER = os.getenv("DAILY_REPORT_EMAIL")
-except Exception as e:
-  traceback.print_exc()
-  sys.exit(1)
+import requests
+import logging
 
 
-def generate_summary_pdf():
-  pdf = FPDF()
-  pdf.add_page()
-  pdf.set_font("Arial", "B", 16)
-  pdf.cell(200, 10, "Mission 2040 – Daily Summary Report", ln=True, align="C")
-  pdf.set_font("Arial", size=12)
-  pdf.multi_cell(
-      0, 10, f"""
-Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}
-Status: Automated Daily Summary
-Progress: Phase 1 systems operational
-""")
-  file_name = f"{datetime.now().strftime('%d-%m-%Y')}_summary_report.pdf"
-  pdf.output(file_name)
-  return file_name
-
-
-def generate_invoice_pdf():
-  pdf = FPDF()
-  pdf.add_page()
-  pdf.set_font("Arial", "B", 16)
-  pdf.cell(200, 10, "Mission 2040 – Daily Invoices", ln=True, align="C")
-  pdf.set_font("Arial", size=12)
-  pdf.multi_cell(0, 10, "Invoices for all income streams will appear here.")
-  file_name = f"{datetime.now().strftime('%d-%m-%Y')}_invoices.pdf"
-  pdf.output(file_name)
-  return file_name
-
-  def send_email_with_pdfs():
-    print("📧 Preparing Mission 2040 Daily Report email...", flush=True)
-
-    msg = EmailMessage()
-    msg["Subject"] = f"Mission 2040 Daily Report - {datetime.now().strftime('%d-%m-%Y')}"
-    msg["From"] = EMAIL_USER
-    msg["To"] = RECEIVER
-
-    msg.set_content(
-        "Your Mission 2040 Daily Report is attached. Please open the PDF using your Lock Code."
-    )
-    msg.add_alternative(html_body, subtype="html")
-
-    # 🔹 Paste PDF template here
-    from fpdf import FPDF
-    from datetime import datetime
-
-    class Mission2040PDF(FPDF):
-
-      def header(self):
-        self.set_fill_color(0, 114, 255)
-        self.rect(0, 0, 210, 25, 'F')
-        self.set_text_color(255, 255, 255)
-        self.set_font('Helvetica', 'B', 16)
-        self.cell(0, 15, '🚀 Mission 2040 Daily Report', ln=True, align='C')
-
-      def footer(self):
-        self.set_y(-20)
-        self.set_font('Helvetica', 'I', 10)
-        self.set_text_color(100, 100, 100)
-        self.cell(
-            0, 10,
-            f'🔒 Secured with Lock Code: {LOCK_CODE} | © {datetime.now().year} Team Lakshya',
-            0, 0, 'C')
-
-    pdf = Mission2040PDF()
-    pdf.add_page()
-    pdf.set_auto_page_break(auto=True, margin=20)
-    pdf.set_font("Helvetica", size=12)
-    pdf.set_text_color(0, 0, 0)
-    pdf.ln(10)
-
-    pdf.cell(0,
-             10,
-             f"Date: {datetime.now().strftime('%d-%m-%Y %I:%M %p')}",
-             ln=True)
-    pdf.cell(0, 10, "Prepared by: JRAVIS Intelligence System", ln=True)
-    pdf.ln(10)
-    pdf.set_font("Helvetica", 'B', 13)
-    pdf.cell(0, 10, "📊 System Summary", ln=True)
-    pdf.set_font("Helvetica", size=11)
-    pdf.multi_cell(
-        0, 8, f"""
-    ✅ All Phase 1 Income Systems are active and synced with JRAVIS Brain.
-    🤖 VA Bot executed today's planned automation routines successfully.
-    📅 Next scheduled report: {datetime.now().strftime('%d-%m-%Y')} at 10:00 AM IST.
-    💼 Total systems running: 30
-    """)
-
-    pdf.ln(10)
-    pdf.set_font("Helvetica", 'B', 13)
-    pdf.cell(0, 10, "💸 Earnings Overview (Simulation)", ln=True)
-    pdf.set_font("Helvetica", size=11)
-    earnings_data = [("Elina Instagram Reels", "₹25,000"),
-                     ("Printify POD Store", "₹80,000"),
-                     ("Meshy AI Store", "₹35,000"),
-                     ("Fiverr AI Gigs", "₹65,000"),
-                     ("YouTube Automation", "₹1,10,000")]
-    pdf.set_fill_color(230, 240, 255)
-    pdf.cell(100, 8, "System", border=1, fill=True)
-    pdf.cell(50, 8, "Earnings", border=1, ln=True, fill=True)
-    for name, amount in earnings_data:
-      pdf.cell(100, 8, name, border=1)
-      pdf.cell(50, 8, amount, border=1, ln=True)
-    pdf.ln(10)
-    pdf.set_font("Helvetica", 'B', 13)
-    pdf.cell(0, 10, "🧩 Status Summary", ln=True)
-    pdf.set_font("Helvetica", size=11)
-    pdf.multi_cell(
-        0, 8, """🟢 JRAVIS Brain: Online
-    🟢 VA Bot: Operational
-    🟢 Mission Bridge: Synced
-    🟢 Income Systems: Active
-    🟢 Report Worker: Running
-    """)
-
-    pdf_output = f"/tmp/Mission2040_Report_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
-    pdf.output(pdf_output)
-
-    with open(pdf_output, "rb") as f:
-      msg.add_attachment(f.read(),
-                         maintype="application",
-                         subtype="pdf",
-                         filename=os.path.basename(pdf_output))
-
-    # Continue with your SMTP sending logic below...
-
-    # 🔹 Paste this block right here:
-    html_body = f"""
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Mission 2040 Daily Report</title>
-        <style>
-          body {{
-            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            background-color: #f4f6f8;
-            color: #222;
-            margin: 0;
-            padding: 0;
-          }}
-          .container {{
-            max-width: 600px;
-            margin: 40px auto;
-            background: #ffffff;
-            border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            overflow: hidden;
-          }}
-          .header {{
-            background: linear-gradient(135deg,#0072ff,#00c6ff);
-            padding: 24px;
-            color: #fff;
-            text-align: center;
-          }}
-          .header h1 {{
-            margin: 0;
-            font-size: 22px;
-            letter-spacing: 1px;
-          }}
-          .content {{
-            padding: 24px;
-            line-height: 1.6;
-          }}
-          .button {{
-            display: inline-block;
-            background: #0072ff;
-            color: #fff !important;
-            padding: 12px 24px;
-            margin: 20px 0;
-            border-radius: 8px;
-            text-decoration: none;
-            font-weight: 600;
-          }}
-          .button:hover {{
-            background: #005cd6;
-          }}
-          .footer {{
-            background: #f0f0f0;
-            color: #555;
-            text-align: center;
-            font-size: 12px;
-            padding: 12px;
-          }}
-        </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <h1>🚀 Mission 2040 Daily Report</h1>
-            </div>
-            <div class="content">
-              <p>Dear Boss,</p>
-              <p>Your <strong>Mission 2040 Daily Report</strong> is ready.</p>
-              <p>
-                The attached PDF is <strong>encrypted</strong> with your Lock Code:
-                <span style="background:#eee;padding:2px 6px;border-radius:4px;">{LOCK_CODE}</span>.
-              </p>
-              <p>Review today’s summary and approve to let VA Bot continue its automated operations.</p>
-
-              <p style="text-align:center;">
-                <a href="https://jravis-dashboard.onrender.com" class="button" target="_blank">✅ Approve Work</a>
-              </p>
-
-              <p>Stay consistent — every action today builds your 2040 vision. 🌍</p>
-              <p>With focus & automation,<br><strong>Dhruvayu — Your Mission 2040 AI Companion</strong></p>
-            </div>
-            <div class="footer">
-              <p>© {datetime.now().year} Team Lakshya | Automated Report by JRAVIS Brain</p>
-            </div>
-          </div>
-        </body>
-        </html>
-        """
-
-    # Now attach it to the email:
-    msg.set_content(
-        "Your Mission 2040 Daily Report is attached. Please open the PDF using your Lock Code."
-    )
-    msg.add_alternative(html_body, subtype="html")
-
-    # (Then continue with your existing PDF attachment + send logic)
-
-  summary_file = generate_summary_pdf()
-  invoice_file = generate_invoice_pdf()
-
-  msg = EmailMessage()
-  msg["From"] = EMAIL_USER
-  msg["To"] = RECEIVER
-  msg["Subject"] = f"Mission 2040 Daily Report – {datetime.now().strftime('%d-%m-%Y')}"
-  msg.set_content(f"Attached are today's reports.\nLock Code: {LOCK_CODE}")
-
-  for file in [summary_file, invoice_file]:
-    with open(file, "rb") as f:
-      msg.add_attachment(f.read(),
-                         maintype="application",
-                         subtype="pdf",
-                         filename=file)
-
-  with smtplib.SMTP("smtp.gmail.com", 587) as smtp:
-    smtp.starttls()
-    smtp.login(EMAIL_USER, EMAIL_PASS)
-    smtp.send_message(msg)
-    print("✅ Daily report emailed successfully.")
-
-
-# ==============================
-# 📧 FUNCTION TO SEND EMAIL WITH PDF REPORTS
-# ==============================
+# send_email_with_pdfs() - generate PDFs from memory and send via SMTP
 def send_email_with_pdfs():
-  print("📨 Sending Mission 2040 Daily Report...")
+    logging.info("📨 Preparing Mission 2040 Daily Report PDFs...")
 
-  msg = EmailMessage()
-  msg["Subject"] = "Mission 2040 Daily Report"
-  msg["From"] = EMAIL_USER
-  msg["To"] = RECEIVER
-  msg.set_content(
-      "Attached are today's Mission 2040 Summary and Invoice Reports.")
+    # 1) Try to load memory data from local file, then fallback to JRAVIS API
+    memory = None
+    try:
+        mem_path = os.getenv("JRAVIS_MEMORY_DB", "memory_data.json")
+        if os.path.exists(mem_path):
+            with open(mem_path, "r") as f:
+                memory = json.load(f)
+            logging.info(f"📥 Loaded memory data from {mem_path}")
+        else:
+            # fallback to JRAVIS endpoint
+            JRAVIS_URL = os.getenv("JRAVIS_URL",
+                                   "https://jravis-brain.onrender.com")
+            try:
+                r = requests.get(f"{JRAVIS_URL}/api/memory_snapshot",
+                                 timeout=10)
+                if r.ok:
+                    memory = r.json()
+                    logging.info("📥 Loaded memory snapshot from JRAVIS API")
+            except Exception as e:
+                logging.warning(
+                    "⚠️ Could not fetch memory snapshot from JRAVIS: %s" % e)
+    except Exception as e:
+        logging.error("❌ Error reading memory: %s" % e)
 
-  # --- Generate dummy PDFs for testing ---
-  for name in ["summary_report.pdf", "invoice_report.pdf"]:
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", "B", 16)
-    pdf.cell(40, 10, f"Mission 2040 — {name.split('_')[0].capitalize()}")
-    pdf.output(name)
+    if not memory:
+        memory = {"income_history": [], "recent_activity": []}
+        logging.warning("⚠️ No memory found — generating empty reports")
 
-    with open(name, "rb") as f:
-      msg.add_attachment(f.read(),
-                         maintype="application",
-                         subtype="pdf",
-                         filename=name)
+    # 2) Build summary content
+    summary_ts = datetime.utcnow().isoformat() + "Z"
+    history = memory.get("income_history", [])
+    activity = memory.get("recent_activity", [])
 
-  # --- Send the email ---
-  try:
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
-      smtp.login(EMAIL_USER, EMAIL_PASS)
-      smtp.send_message(msg)
-    print("✅ Daily report emailed successfully.")
-  except Exception as e:
-    print(f"❌ Email sending failed: {e}")
+    # compute totals (best-effort)
+    total_earnings = 0
+    for day in history:
+        # day may be dict with structure; try to find a numeric value
+        if isinstance(day, dict):
+            # allow both data and earnings
+            if "earnings" in day:
+                total_earnings += float(day.get("earnings", 0) or 0)
+            elif "total" in day:
+                total_earnings += float(day.get("total", 0) or 0)
 
+    # 3) Create Summary PDF
+    def build_summary_pdf():
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", "B", 16)
+        pdf.cell(0, 10, "Mission 2040 — Daily Summary", ln=True)
+        pdf.set_font("Arial", "", 11)
+        pdf.ln(4)
+        pdf.cell(0, 8, f"Generated: {summary_ts}", ln=True)
+        pdf.ln(6)
+        pdf.set_font("Arial", "B", 12)
+        pdf.cell(0, 8, "Earnings Overview", ln=True)
+        pdf.set_font("Arial", "", 11)
+        pdf.ln(2)
+        pdf.cell(0,
+                 8,
+                 f"Total (recent window): ₹ {int(total_earnings):,}",
+                 ln=True)
+        pdf.ln(6)
 
-# ⏰ Schedulers
-schedule.every().day.at("10:00").do(send_email_with_pdfs)
-schedule.every().sunday.at("00:00").do(send_email_with_pdfs)
+        pdf.set_font("Arial", "B", 12)
+        pdf.cell(0, 8, "Recent Income History", ln=True)
+        pdf.set_font("Arial", "", 10)
+        pdf.ln(2)
 
-print("📅 JRAVIS Daily/Weekly Report Scheduler Running...", flush=True)
+        if history:
+            for e in history[:20]:
+                # flexible formatting
+                if isinstance(e, dict):
+                    label = e.get("date") or e.get("day") or str(e)
+                    val = e.get("earnings") or e.get("total") or ""
+                    pdf.cell(0, 7, f"{label} — ₹ {val}", ln=True)
+                else:
+                    pdf.cell(0, 7, str(e), ln=True)
+        else:
+            pdf.cell(0, 7, "No history records available.", ln=True)
 
-while True:
-  print("⏳ Checking schedule...", flush=True)
-  schedule.run_pending()
-  time.sleep(30)
+        pdf.ln(6)
+        pdf.set_font("Arial", "B", 12)
+        pdf.cell(0, 8, "Recent Activity", ln=True)
+        pdf.set_font("Arial", "", 10)
+        pdf.ln(2)
+        if activity:
+            for a in activity[:20]:
+                msg = a.get("event") or a.get("message") or str(a)
+                ts = a.get("time") or a.get("timestamp") or ""
+                pdf.cell(0, 7, f"{ts} — {msg}", ln=True)
+        else:
+            pdf.cell(0, 7, "No activity logged.", ln=True)
 
-# 🔽 Temporary manual trigger for testing
-# send_email_with_pdfs()
+        buf = io.BytesIO()
+        pdf.output(buf)
+        buf.seek(0)
+        return buf
+
+    # 4) Create Invoice PDF (simple aggregated invoice)
+    def build_invoice_pdf():
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", "B", 16)
+        pdf.cell(0, 10, "Mission 2040 — Invoice Pack", ln=True)
+        pdf.ln(6)
+        pdf.set_font("Arial", "", 11)
+        pdf.cell(0, 8, f"Issue Date: {summary_ts}", ln=True)
+        pdf.ln(6)
+        pdf.set_font("Arial", "B", 12)
+        pdf.cell(0, 8, "Line Items", ln=True)
+        pdf.set_font("Arial", "", 10)
+        pdf.ln(4)
+
+        # If memory has breakdowns, enumerate
+        breakdown = None
+        # try usual places
+        if history and isinstance(history[0], dict) and "data" in history[0]:
+            # historical wrapper
+            breakdown = history[0]["data"].get("breakdown") if isinstance(
+                history[0]["data"], dict) else None
+
+        # fallback: if the memory store has latest data under 'data'
+        if not breakdown:
+            latest = memory.get("income_history", [])
+            if latest and isinstance(latest[0], dict):
+                breakdown = latest[0].get("streams") or latest[0].get(
+                    "breakdown") or None
+
+        # fallback: no breakdown, make aggregated line
+        if breakdown and isinstance(breakdown, dict):
+            for k, v in breakdown.items():
+                pdf.cell(0, 7, f"{k} — ₹ {v}", ln=True)
+        else:
+            pdf.cell(0,
+                     7,
+                     f"Total Earnings — ₹ {int(total_earnings):,}",
+                     ln=True)
+
+        pdf.ln(8)
+        pdf.set_font("Arial", "", 10)
+        pdf.cell(
+            0,
+            7,
+            "Notes: This invoice is auto-generated for Mission 2040 reporting.",
+            ln=True)
+
+        buf = io.BytesIO()
+        pdf.output(buf)
+        buf.seek(0)
+        return buf
+
+    summary_pdf_buf = build_summary_pdf()
+    invoice_pdf_buf = build_invoice_pdf()
+
+    # 5) Optional PDF encryption using pikepdf — try it, fallback if missing
+    def maybe_encrypt(pdf_buf, out_name):
+        password = LOCK_CODE if LOCK_CODE else None
+        if not password:
+            # no lock code set -> return original bytes
+            return pdf_buf.getvalue(), False
+        try:
+            import pikepdf
+            # write temp in-memory, pikepdf requires bytes->open via BytesIO not supported directly so use temp files
+            import tempfile
+            with tempfile.NamedTemporaryFile(delete=False,
+                                             suffix=".pdf") as t_in:
+                t_in.write(pdf_buf.getvalue())
+                t_in.flush()
+                tmp_in = t_in.name
+            out_path = out_name
+            pdf = pikepdf.Pdf.open(tmp_in)
+            pdf.save(out_path,
+                     encryption=pikepdf.Encryption(owner=password,
+                                                   user=password,
+                                                   R=4))
+            with open(out_path, "rb") as f:
+                data = f.read()
+            return data, True
+        except Exception as e:
+            logging.warning(
+                f"⚠️ PDF encryption skipped (pikepdf missing or error): {e}")
+            return pdf_buf.getvalue(), False
+
+    summary_bytes, summary_encrypted = maybe_encrypt(
+        summary_pdf_buf, "summary_report_locked.pdf")
+    invoice_bytes, invoice_encrypted = maybe_encrypt(
+        invoice_pdf_buf, "invoice_report_locked.pdf")
+
+    # 6) Build and send email
+    msg = EmailMessage()
+    msg["Subject"] = f"Mission 2040 — Daily Report {datetime.utcnow().date().isoformat()}"
+    msg["From"] = EMAIL_USER
+    msg["To"] = RECEIVER or EMAIL_USER
+    msg.set_content(
+        "Attached: Mission 2040 Summary and Invoices. (Lock applied if available)"
+    )
+
+    # Attach summary
+    msg.add_attachment(summary_bytes,
+                       maintype="application",
+                       subtype="pdf",
+                       filename=("summary_report_locked.pdf" if
+                                 summary_encrypted else "summary_report.pdf"))
+    # Attach invoice
+    msg.add_attachment(invoice_bytes,
+                       maintype="application",
+                       subtype="pdf",
+                       filename=("invoice_report_locked.pdf" if
+                                 invoice_encrypted else "invoice_report.pdf"))
+
+    # SMTP send
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+            smtp.login(EMAIL_USER, EMAIL_PASS)
+            smtp.send_message(msg)
+        logging.info("✅ Daily report emailed successfully.")
+    except Exception as e:
+        logging.error(f"❌ Email sending failed: {e}")
+
+    # 7) Save copies locally (for records)
+    try:
+        with open(
+                f"reports/summary_{datetime.utcnow().date().isoformat()}.pdf",
+                "wb") as f:
+            f.write(summary_bytes)
+        with open(
+                f"reports/invoice_{datetime.utcnow().date().isoformat()}.pdf",
+                "wb") as f:
+            f.write(invoice_bytes)
+        logging.info("💾 Saved report copies to /reports/")
+    except Exception as e:
+        logging.warning(f"⚠️ Could not save reports locally: {e}")
