@@ -245,3 +245,32 @@ def send_email_with_pdfs():
         logging.info("💾 Saved report copies to /reports/")
     except Exception as e:
         logging.warning(f"⚠️ Could not save reports locally: {e}")
+
+
+# ==============================
+# 🌐 Notify JRAVIS Brain after report sent
+# ==============================
+import requests
+
+
+def notify_jravis(summary_text):
+    """Send report completion update to JRAVIS Brain."""
+    try:
+        requests.post("https://jravis-brain.onrender.com/api/report_status",
+                      json={
+                          "summary": summary_text,
+                          "timestamp": datetime.now().isoformat()
+                      },
+                      timeout=10)
+        print("📡 Sent report summary to JRAVIS Brain.")
+    except Exception as e:
+        print(f"⚠️ JRAVIS Brain notification failed: {e}")
+
+
+send_email_with_pdfs()
+# ✅ After email sending is done, sync with JRAVIS Brain
+try:
+    notify_jravis("Daily Mission 2040 report sent successfully.")
+    print("📡 Sent report summary to JRAVIS Brain.")
+except Exception as e:
+    print(f"⚠️ Failed to notify JRAVIS Brain: {e}")
