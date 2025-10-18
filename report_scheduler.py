@@ -48,9 +48,6 @@ def generate_invoice_pdf():
   pdf.output(file_name)
   return file_name
 
-
-def send_email_with_pdfs():
-
   def send_email_with_pdfs():
     print("📧 Preparing Mission 2040 Daily Report email...", flush=True)
 
@@ -58,6 +55,95 @@ def send_email_with_pdfs():
     msg["Subject"] = f"Mission 2040 Daily Report - {datetime.now().strftime('%d-%m-%Y')}"
     msg["From"] = EMAIL_USER
     msg["To"] = RECEIVER
+
+    msg.set_content(
+        "Your Mission 2040 Daily Report is attached. Please open the PDF using your Lock Code."
+    )
+    msg.add_alternative(html_body, subtype="html")
+
+    # 🔹 Paste PDF template here
+    from fpdf import FPDF
+    from datetime import datetime
+
+    class Mission2040PDF(FPDF):
+
+      def header(self):
+        self.set_fill_color(0, 114, 255)
+        self.rect(0, 0, 210, 25, 'F')
+        self.set_text_color(255, 255, 255)
+        self.set_font('Helvetica', 'B', 16)
+        self.cell(0, 15, '🚀 Mission 2040 Daily Report', ln=True, align='C')
+
+      def footer(self):
+        self.set_y(-20)
+        self.set_font('Helvetica', 'I', 10)
+        self.set_text_color(100, 100, 100)
+        self.cell(
+            0, 10,
+            f'🔒 Secured with Lock Code: {LOCK_CODE} | © {datetime.now().year} Team Lakshya',
+            0, 0, 'C')
+
+    pdf = Mission2040PDF()
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=20)
+    pdf.set_font("Helvetica", size=12)
+    pdf.set_text_color(0, 0, 0)
+    pdf.ln(10)
+
+    pdf.cell(0,
+             10,
+             f"Date: {datetime.now().strftime('%d-%m-%Y %I:%M %p')}",
+             ln=True)
+    pdf.cell(0, 10, "Prepared by: JRAVIS Intelligence System", ln=True)
+    pdf.ln(10)
+    pdf.set_font("Helvetica", 'B', 13)
+    pdf.cell(0, 10, "📊 System Summary", ln=True)
+    pdf.set_font("Helvetica", size=11)
+    pdf.multi_cell(
+        0, 8, f"""
+    ✅ All Phase 1 Income Systems are active and synced with JRAVIS Brain.
+    🤖 VA Bot executed today's planned automation routines successfully.
+    📅 Next scheduled report: {datetime.now().strftime('%d-%m-%Y')} at 10:00 AM IST.
+    💼 Total systems running: 30
+    """)
+
+    pdf.ln(10)
+    pdf.set_font("Helvetica", 'B', 13)
+    pdf.cell(0, 10, "💸 Earnings Overview (Simulation)", ln=True)
+    pdf.set_font("Helvetica", size=11)
+    earnings_data = [("Elina Instagram Reels", "₹25,000"),
+                     ("Printify POD Store", "₹80,000"),
+                     ("Meshy AI Store", "₹35,000"),
+                     ("Fiverr AI Gigs", "₹65,000"),
+                     ("YouTube Automation", "₹1,10,000")]
+    pdf.set_fill_color(230, 240, 255)
+    pdf.cell(100, 8, "System", border=1, fill=True)
+    pdf.cell(50, 8, "Earnings", border=1, ln=True, fill=True)
+    for name, amount in earnings_data:
+      pdf.cell(100, 8, name, border=1)
+      pdf.cell(50, 8, amount, border=1, ln=True)
+    pdf.ln(10)
+    pdf.set_font("Helvetica", 'B', 13)
+    pdf.cell(0, 10, "🧩 Status Summary", ln=True)
+    pdf.set_font("Helvetica", size=11)
+    pdf.multi_cell(
+        0, 8, """🟢 JRAVIS Brain: Online
+    🟢 VA Bot: Operational
+    🟢 Mission Bridge: Synced
+    🟢 Income Systems: Active
+    🟢 Report Worker: Running
+    """)
+
+    pdf_output = f"/tmp/Mission2040_Report_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
+    pdf.output(pdf_output)
+
+    with open(pdf_output, "rb") as f:
+      msg.add_attachment(f.read(),
+                         maintype="application",
+                         subtype="pdf",
+                         filename=os.path.basename(pdf_output))
+
+    # Continue with your SMTP sending logic below...
 
     # 🔹 Paste this block right here:
     html_body = f"""

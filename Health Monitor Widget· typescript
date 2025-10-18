@@ -1,0 +1,96 @@
+import React, { useEffect, useState } from 'react';
+import { Card, CardHeader, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { RefreshCw } from 'lucide-react';
+
+interface HealthStatus {
+  service: string;
+  status: string;
+  last_cycle?: string;
+  last_success?: string;
+  error_count?: number;
+  healthy?: boolean;
+}
+
+const services = [
+  { name: 'JRAVIS Brain', url: 'https://jravis-brain.onrender.com/health' },
+  { name: 'VA Bot Connector', url: 'https://va-bot-connector.onrender.com/health' },
+  { name: 'Mission Bridge', url: 'https://mission-bridge.onrender.com/health' },
+  { name: 'Intelligence Worker', url: 'https://mission2040-intelligence-worker.onrender.com/health' }
+];
+
+export default function HealthMonitorWidget() {
+  const [statuses, setStatuses] = useState<HealthStatus[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const fetchHealth = async () => {
+    setLoading(true);
+    const results: HealthStatus[] = [];
+
+    for (const service of services) {
+      try {
+        const response = await fetch(service.url);
+        if (!response.ok) throw new Error('Network error');
+        const data = await response.json();
+        results.push({
+          service: service.name,
+          status: data.healthy ? 'Online' : 'Degraded',
+          last_cycle: data.last_cycle,
+          last_success: data.last_success,
+          error_count: data.error_count,
+          healthy: data.healthy
+        });
+      } catch (error) {
+        results.push({ service: service.name, status: 'Offline', healthy: false });
+      }
+    }
+
+    setStatuses(results);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchHealth();
+    const interval = setInterval(fetchHealth, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const statusBadge = (healthy?: boolean) => {
+    if (healthy === undefined) return <Badge variant="secondary">Unknown</Badge>;
+    return healthy ? (
+      <Badge className="bg-green-600">Healthy</Badge>
+    ) : (
+      <Badge className="bg-red-600">Issue</Badge>
+    );
+  };
+
+  return (
+    <Card className="p-4 shadow-md rounded-2xl border border-gray-800 bg-gray-900 text-gray-100">
+      <CardHeader className="flex items-center justify-between mb-2">
+        <h2 className="text-xl font-semibold">System Health Monitor</h2>
+        <button onClick={fetchHealth} disabled={loading} className="flex items-center gap-1 text-sm">
+          <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+          Refresh
+        </button>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {statuses.map((item) => (
+            <div key={item.service} className="p-3 rounded-xl bg-gray-800 border border-gray-700">
+              <div className="flex justify-between items-center mb-1">
+                <span className="font-medium text-sm text-gray-300">{item.service}</span>
+                {statusBadge(item.healthy)}
+              </div>
+              <div className="text-xs text-gray-400">
+                <div>Status: {item.status}</div>
+                {item.last_cycle && <div>Last Cycle: {item.last_cycle}</div>}
+                {item.last_success && <div>Last Success: {item.last_success}</div>}
+                {typeof item.error_count === 'number' && <div>Errors: {item.error_count}</div>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}

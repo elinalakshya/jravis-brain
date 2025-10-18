@@ -1,0 +1,28 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body {
+  @apply bg-mission-bg text-mission-text min-h-screen;
+  font-family: 'Inter', sans-serif;
+}
+
+h1, h2, h3, h4, h5 {
+  @apply font-heading text-mission-text;
+}
+
+.card {
+  @apply bg-mission-card border border-mission-border rounded-2xl p-4 shadow-neon;
+}
+
+button {
+  @apply bg-mission-accent text-black font-semibold py-2 px-4 rounded-xl hover:opacity-90;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: #00ff88;
+  border-radius: 10px;
+}

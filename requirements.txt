@@ -11,3 +11,7 @@ gunicorn
 
 schedule
 fpdf
+requests
+pytz
+
+tinydb

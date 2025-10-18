@@ -1,0 +1,23 @@
+# ============================================================
+# ✅ UNIVERSAL DASHBOARD DOCKERFILE
+# ============================================================
+FROM python:3.11-bullseye
+
+WORKDIR /app
+
+# Install dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    fontconfig libxrender1 libxext6 libx11-6 xfonts-base xfonts-75dpi \
+    libjpeg62-turbo libpng16-16 ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+ENV PORT=8080
+EXPOSE 8080
+
+CMD ["gunicorn", "jravis_dashboard_v5:app", "--bind", "0.0.0.0:8080", "--timeout", "120"]
