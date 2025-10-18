@@ -266,6 +266,43 @@ def generate_invoice_pdf():
     print("✅ Daily report emailed successfully.")
 
 
+# ==============================
+# 📧 FUNCTION TO SEND EMAIL WITH PDF REPORTS
+# ==============================
+def send_email_with_pdfs():
+  print("📨 Sending Mission 2040 Daily Report...")
+
+  msg = EmailMessage()
+  msg["Subject"] = "Mission 2040 Daily Report"
+  msg["From"] = EMAIL_USER
+  msg["To"] = RECEIVER
+  msg.set_content(
+      "Attached are today's Mission 2040 Summary and Invoice Reports.")
+
+  # --- Generate dummy PDFs for testing ---
+  for name in ["summary_report.pdf", "invoice_report.pdf"]:
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", "B", 16)
+    pdf.cell(40, 10, f"Mission 2040 — {name.split('_')[0].capitalize()}")
+    pdf.output(name)
+
+    with open(name, "rb") as f:
+      msg.add_attachment(f.read(),
+                         maintype="application",
+                         subtype="pdf",
+                         filename=name)
+
+  # --- Send the email ---
+  try:
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+      smtp.login(EMAIL_USER, EMAIL_PASS)
+      smtp.send_message(msg)
+    print("✅ Daily report emailed successfully.")
+  except Exception as e:
+    print(f"❌ Email sending failed: {e}")
+
+
 # ⏰ Schedulers
 schedule.every().day.at("10:00").do(send_email_with_pdfs)
 schedule.every().sunday.at("00:00").do(send_email_with_pdfs)
