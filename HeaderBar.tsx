@@ -49,3 +49,67 @@ export default function HeaderBar() {
     </header>
   );
 }
+
+("use client");
+import { useState, useEffect } from "react";
+
+export default function HeaderBar() {
+  const [status, setStatus] = useState("🟡 Checking...");
+  const [phase, setPhase] = useState("Phase 1");
+  const [color, setColor] = useState("text-yellow-400");
+
+  async function checkSystemStatus() {
+    try {
+      const res = await fetch("https://jravis-brain.onrender.com/health");
+      if (res.ok) {
+        setStatus("🟢 Active");
+        setColor("text-green-400");
+      } else {
+        setStatus("🔴 Offline");
+        setColor("text-red-400");
+      }
+    } catch (err) {
+      setStatus("🔴 Offline");
+      setColor("text-red-400");
+    }
+  }
+
+  useEffect(() => {
+    checkSystemStatus();
+    const interval = setInterval(checkSystemStatus, 10000); // every 10 seconds
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <header className="flex items-center justify-between px-6 py-3 bg-gray-950 text-gray-200 shadow-lg border-b border-gray-800">
+      <div className="flex items-center gap-2">
+        <span className="text-2xl">🚀</span>
+        <h1 className="text-xl font-semibold tracking-wide">
+          Mission <span className="text-blue-400">2040</span> Console
+        </h1>
+      </div>
+
+      <div className="flex items-center gap-6 text-sm">
+        <div className="text-gray-400">
+          Boss <span className="text-white font-medium">Prakruthi 👑</span>
+        </div>
+        <div className="text-gray-400">
+          System:{" "}
+          <span className="flex items-center gap-1">
+            <span
+              className={`h-2 w-2 rounded-full ${
+                status.includes("Active")
+                  ? "bg-green-400 animate-pulse"
+                  : "bg-red-500"
+              }`}
+            ></span>
+            <span className={`${color} font-semibold`}>{status}</span>
+          </span>
+        </div>
+        <div className="text-gray-400">
+          Mode: <span className="text-blue-400 font-semibold">{phase}</span>
+        </div>
+      </div>
+    </header>
+  );
+}

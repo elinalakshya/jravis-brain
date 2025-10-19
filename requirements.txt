@@ -16,3 +16,16 @@ pytz
 
 tinydb
 pikepdf
+
+flask
+tinydb
+fpdf
+PyPDF2
+requests
+
+flask
+tinydb
+fpdf
+PyPDF2
+requests
+schedule

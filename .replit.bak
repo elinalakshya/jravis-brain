@@ -70,3 +70,6 @@ waitForPort = 5000
 
 [workflows.workflow.metadata]
 outputType = "webview"
+
+language = "python"
+run = "python3.10 jravis_dashboard_api.py"

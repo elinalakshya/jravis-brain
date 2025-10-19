@@ -158,6 +158,25 @@ def start_scheduler():
 
 
 # ==============================
+# 🧾 API SUMMARY ENDPOINT (for JRAVIS Memory Sync)
+# ==============================
+@app.route("/api/summary", methods=["GET"])
+def api_summary():
+    total, percent = get_progress()
+    data = {
+        "printify": 20000,
+        "meshy": 15000,
+        "youtube": 35000,
+        "total": total,
+        "target": TARGET,
+        "progress_percent": percent,
+        "currency": "INR",
+        "timestamp": datetime.datetime.utcnow().isoformat() + "Z"
+    }
+    return jsonify(data), 200
+
+
+# ==============================
 # 🚀 ENTRY POINT
 # ==============================
 if __name__ == "__main__":

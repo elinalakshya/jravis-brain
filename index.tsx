@@ -241,3 +241,26 @@ export default function Mission2040Dashboard() {
     </main>
   );
 }
+
+import ReportTrackerWidget from "../components/ReportTrackerWidget";
+
+export default function Dashboard() {
+  return (
+    <div className="flex flex-wrap gap-4 p-6 bg-black min-h-screen text-white">
+      {/* Existing widgets */}
+      <ReportTrackerWidget />
+    </div>
+  );
+}
+
+import ReportTrackerWidget from "../components/ReportTrackerWidget";
+import IncomeInsightsCard from "../components/IncomeInsightsCard";
+
+export default function Dashboard() {
+  return (
+    <div className="flex flex-wrap gap-4 p-6 bg-black min-h-screen text-white">
+      <ReportTrackerWidget />
+      <IncomeInsightsCard />
+    </div>
+  );
+}

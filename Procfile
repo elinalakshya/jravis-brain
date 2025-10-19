@@ -13,3 +13,5 @@ web: python income_system_bundle.py
 web: gunicorn jravis_dashboard_v5:app --bind 0.0.0.0:$PORT
 
 worker: python Mission2040_JRAVIS_VABot_Intelligence_Script.py
+
+web: python jravis_core_debian.py

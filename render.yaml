@@ -62,3 +62,13 @@ services:
       - key: PORT
         value: "10005"
     startCommand: gunicorn income_system_bundle:app --bind 0.0.0.0:10005
+
+    services:
+    - type: web
+      name: jravis-core
+      env: python
+      buildCommand: pip install -r requirements.txt
+      startCommand: python jravis_core_debian.py
+      plan: free
+      region: singapore
+
