@@ -58,5 +58,7 @@ def dashboard_data():
 
 # ---- 4. Run ----
 if __name__ == "__main__":
-    print("🧠 JRAVIS Core is Live at: http://localhost:3300/")
-    app.run(host="0.0.0.0", port=3300)
+    import os
+    port = int(os.environ.get("PORT", 3300))  # Render uses dynamic port
+    print(f"🧠 JRAVIS Core is Live at: http://0.0.0.0:{port}/")
+    app.run(host="0.0.0.0", port=port)
