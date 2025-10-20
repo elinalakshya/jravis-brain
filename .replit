@@ -2,10 +2,6 @@ run = "python3 DailyReport/app.py"
 modules = ["nodejs-20", "python-3.11"]
 
 [[ports]]
-localPort = 3300
-externalPort = 6000
-
-[[ports]]
 localPort = 5000
 externalPort = 80
 
@@ -74,4 +70,3 @@ waitForPort = 5000
 
 [workflows.workflow.metadata]
 outputType = "webview"
-# rebuild Sun Oct 19 07:05:07 PM Asia 2025
