@@ -29,3 +29,8 @@ fpdf
 PyPDF2
 requests
 schedule
+
+cryptography
+python-dotenv
+requests
+flask
