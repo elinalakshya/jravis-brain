@@ -72,16 +72,15 @@ def generate_key():
     else:
         print(f"[TokenManager] Key already exists at {KEY_FILE}")
 
-
 def load_key():
-    """Load the Fernet encryption key."""
-    if not os.path.exists(KEY_FILE):
-        raise FileNotFoundError(
-            "[TokenManager] secret.key not found. Run generate_key() first.")
-    with open(KEY_FILE, "rb") as key_file:
-        return key_file.read()
-
-
+    env_key = os.getenv("SECRET_KEY")
+    if env_key:
+        return env_key.encode()
+    if os.path.exists("secret.key"):
+        with open("secret.key", "rb") as f:
+            return f.read()
+    raise FileNotFoundError("[TokenManager] secret.key not found. Run generate_key() first.")
+    
 # ==============================================================
 # 4. Encryption / Decryption
 # ==============================================================
