@@ -1,46 +1,53 @@
-# printify_connector.py
-# ✅ Self-locating version that works in Render, Replit, or locally.
-
-import os, time, json, requests
+import os
+import time
+import requests
 from datetime import datetime
 from token_manager import get_token
 
+# ----------------------------------------------------------------------
+# ✅ JRAVIS → Printify Connector
+# Automatically syncs and polls Printify shop via API.
+# ----------------------------------------------------------------------
 
-def log(msg):
+def log(msg: str):
+    """Timestamped logger."""
     print(f"[{datetime.utcnow().isoformat()}Z] {msg}", flush=True)
 
+def get_shop_orders(shop_id: str, token: str):
+    """Fetch latest orders for a given Printify shop."""
+    url = f"https://api.printify.com/v1/shops/{shop_id}/orders.json?page=1&limit=10"
+    r = requests.get(url, headers={"Authorization": f"Bearer {token}"})
+    if r.status_code == 200:
+        return r.json()
+    else:
+        log(f"⚠️ Error fetching orders: {r.status_code} - {r.text}")
+        return None
 
 def main():
     try:
-        token = get_token("printify")
+        # 1️⃣ Get environment variables
         shop_id = os.getenv("PRINTIFY_SHOP_ID")
-
-        if not token:
-            raise ValueError("❌ Missing or invalid PRINTIFY_TOKEN.")
         if not shop_id:
-            raise ValueError("❌ Missing PRINTIFY_SHOP_ID in environment.")
+            raise ValueError("PRINTIFY_SHOP_ID not found in environment variables.")
 
-        base_url = f"https://api.printify.com/v1/shops/{shop_id}/orders.json"
-        log(f"🚀 Printify connector started for shop {shop_id}")
+        # 2️⃣ Decrypt API key securely
+        token = get_token("printify")
 
-        # fetch recent orders
-        resp = requests.get(base_url,
-                            headers={"Authorization": f"Bearer {token}"})
+        # 3️⃣ Start connector
+        log(f"✅ JRAVIS Printify Connector started for shop {shop_id}")
+        log("Polling for new orders every 5 minutes...")
 
-        if resp.status_code == 200:
-            data = resp.json()
-            log(f"✅ Connected! Found {len(data.get('data', []))} orders.")
-            print(json.dumps(data, indent=2))
-        else:
-            log(f"❌ Error: {resp.status_code} — {resp.text}")
+        while True:
+            orders = get_shop_orders(shop_id, token)
+            if orders and isinstance(orders, dict) and orders.get("data"):
+                log(f"🟢 Found {len(orders['data'])} new orders")
+            else:
+                log("No new orders found.")
+
+            time.sleep(300)  # 5-minute interval
 
     except Exception as e:
-        log(f"🔥 Fatal error: {e}")
-
+        log(f"❌ Fatal error in connector: {e}")
 
 if __name__ == "__main__":
-    # change working directory to where this file is
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    log("🧠 JRAVIS Printify connector initializing...")
     main()
-    log("✅ Finished execution.")
