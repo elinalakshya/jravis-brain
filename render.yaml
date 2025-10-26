@@ -72,3 +72,11 @@ services:
       plan: free
       region: singapore
 
+
+services:
+- type: worker
+  name: jravis-printify-connector
+  env: python
+  buildCommand: pip install -r requirements.txt
+  startCommand: python printify_connector.py
+  autoDeploy: true

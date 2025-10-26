@@ -1,75 +1,32 @@
-run = "python3 DailyReport/app.py"
-modules = ["nodejs-20", "python-3.11"]
+# ======================================================
+# JRAVIS + VA BOT CLOUD CONFIG  – Python 3.9 Runtime
+# ======================================================
 
-[[ports]]
-localPort = 5000
-externalPort = 80
-
-[[ports]]
-localPort = 8000
-externalPort = 8000
-
-[[ports]]
-localPort = 8050
-externalPort = 3001
-
-[[ports]]
-localPort = 8080
-externalPort = 8080
-
-[[ports]]
-localPort = 10000
-externalPort = 3000
-
-[[ports]]
-localPort = 10001
-externalPort = 5000
-
-[[ports]]
-localPort = 10002
-externalPort = 5173
-
-[[ports]]
-localPort = 35025
-externalPort = 3003
-
-[[ports]]
-localPort = 36793
-externalPort = 4200
-
-[[ports]]
-localPort = 43725
-externalPort = 3002
+run = "bash startup.sh"
+language = "bash"
 
 [nix]
-packages = ["freetype", "gitFull", "glibcLocales", "google-cloud-sdk", "jq", "mailutils", "nano", "playwright-driver", "zulu", "python39Packages.bootstrapped-pip", "imagemagick6", "docker-client"]
+packages = [
+  "python39Full",
+  "python39Packages.pip",
+  "python39Packages.setuptools",
+  "python39Packages.wheel",
+  "python39Packages.requests",
+  "python39Packages.flask",
+  "python39Packages.tinydb",
+  "python39Packages.pypdf2",
+  "python39Packages.fpdf",
+  "python39Packages.pandas",
+  "python39Packages.matplotlib",
+  "python39Packages.psutil",
+  "python39Packages.schedule",
+  "python39Packages.pytz"
+]
 
 [agent]
 expertMode = true
 
-[workflows]
-runButton = "Project"
-
-[[workflows.workflow]]
-name = "Project"
-mode = "parallel"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "VA Bot Server"
-
-[[workflows.workflow]]
-name = "VA Bot Server"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "python3 main.py"
-waitForPort = 5000
-
-[workflows.workflow.metadata]
-outputType = "webview"
-
-language = "python"
-run = "python3.10 jravis_dashboard_api.py"
+# Ports (keep open for JRAVIS)
+[[ports]]
+localPort = 8080
+externalPort = 8080
