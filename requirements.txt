@@ -43,3 +43,5 @@ python-dotenv
 requests
 Flask
 
+requests>=2.31.0
+rich>=13.7.0
