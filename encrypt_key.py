@@ -1,11 +1,15 @@
 from cryptography.fernet import Fernet
 import os
 
-key = os.getenv("SECRET_KEY").encode()
-cipher = Fernet(key)
+# Load existing secret key from environment (Render)
+key = os.getenv("SECRET_KEY")
+if not key:
+    raise SystemExit("❌ SECRET_KEY not found in environment. Go to Render > Environment and add it first.")
 
-# 🔹 Paste your real Printify API key between quotes below:
-api = "p_your_real_printify_api_key_here"
+cipher = Fernet(key.encode())
+
+# 🔹 Paste your real Printify API key here (the one starting with e_ or p_)
+api = "e_your_real_printify_key_here"
 
 enc = cipher.encrypt(api.encode()).decode()
 print("\n✅ COPY THIS → PRINTIFY_TOKEN_ENC=" + enc)
