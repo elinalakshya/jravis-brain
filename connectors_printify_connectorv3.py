@@ -376,11 +376,15 @@ def example_run():
 
 
 if __name__ == "__main__":
-    # Basic demo run when executed directly.
-    # Required env vars: PRINTIFY_API_TOKEN (optionally PRINTIFY_SHOP_ID)
     try:
         example_run()
+        # keep alive so Render sees the process as healthy
+        import time
+        while True:
+            time.sleep(300)
     except PrintifyAuthError as e:
         logger.error("Auth failure: %s", e)
+        time.sleep(60)
     except Exception as e:
         logger.exception("Unhandled error: %s", e)
+        time.sleep(60)
