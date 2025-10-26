@@ -30,12 +30,10 @@ PyPDF2
 requests
 schedule
 
-<<<<<<< HEAD
 cryptography
 python-dotenv
 requests
 flask
-=======
 requests
 python-dotenv
 cryptography
@@ -44,4 +42,4 @@ cryptography
 python-dotenv
 requests
 Flask
->>>>>>> 7ce07bc (Auto encrypt & push update)
+
