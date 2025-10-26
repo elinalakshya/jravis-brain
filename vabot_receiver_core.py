@@ -2,8 +2,8 @@ import os, logging
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
-SECRET = os.getenv("VA_BOT_SECRET")
-
+logging.basicConfig(level=logging.INFO)
+SECRET = os.getenv("VA_BOT_SECRET", "LakshyaSecureKey@2025")
 
 @app.route("/api/printify/order", methods=["POST"])
 def receive_order():
@@ -13,6 +13,9 @@ def receive_order():
     logging.info("Received orders: %s", payload)
     return jsonify({"status": "ok"}), 200
 
+@app.route("/", methods=["GET"])
+def root():
+    return jsonify({"message": "Receiver running"}), 200
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "10000"))
