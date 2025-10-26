@@ -162,9 +162,26 @@ def lockout():
     session.clear()
     return redirect(url_for("unlock"))
 
+def init_database():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS orders (
+            order_id TEXT PRIMARY KEY,
+            shop_id TEXT,
+            amount NUMERIC,
+            currency TEXT,
+            status TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.commit()
+    conn.close()
+    print("[JRAVIS] Database initialized ✔️")
 
 # ---------- MAIN ---------- #
 if __name__ == "__main__":
+    init_database()           # <-- ensure table exists on startup
     port = int(os.getenv("PORT", 10000))
     print(f"[JRAVIS] Live dashboard started on port {port}")
     app.run(host="0.0.0.0", port=port)
