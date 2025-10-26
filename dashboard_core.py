@@ -181,7 +181,8 @@ def init_database():
 
 # ---------- MAIN ---------- #
 if __name__ == "__main__":
-    init_database()           # <-- ensure table exists on startup
+    init_database()           # <-- keep this line!
     port = int(os.getenv("PORT", 10000))
     print(f"[JRAVIS] Live dashboard started on port {port}")
     app.run(host="0.0.0.0", port=port)
+
