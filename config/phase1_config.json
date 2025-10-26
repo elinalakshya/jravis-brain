@@ -1,0 +1,100 @@
+{
+  "phase": "1",
+  "title": "Fast Kickstart – 2025",
+  "target_monthly_income_inr": 500000,
+  "currency": "INR",
+  "report_to": "va-bot",
+  "report_interval_hours": 24,
+  "systems": [
+    {
+      "id": 1,
+      "name": "Elina Instagram Reels",
+      "platform": "Instagram",
+      "data_source": "/feeds/reels_feed.json",
+      "marketing_action": "auto_post_reels",
+      "frequency": "3_per_day",
+      "va_instruction": "Generate trending caption + 15 hashtags, post via Meta Graph API, cross-post to YouTube Shorts and TikTok."
+    },
+    {
+      "id": 2,
+      "name": "Printify POD Store",
+      "platform": "Printify",
+      "data_source": "/feeds/printify_products.json",
+      "marketing_action": "auto_pin_pinterest",
+      "frequency": "hourly_sync",
+      "va_instruction": "Pull new products, post 2 Pinterest pins/day, sync orders with dashboard."
+    },
+    {
+      "id": 3,
+      "name": "Meshy AI Store",
+      "platform": "Meshy.ai",
+      "data_source": "/feeds/meshy_products.json",
+      "marketing_action": "reddit_discord_posts",
+      "frequency": "1_per_day",
+      "va_instruction": "Share AI product demos in Reddit and Discord design groups with store link."
+    },
+    {
+      "id": 4,
+      "name": "Cad Crowd Auto Work",
+      "platform": "CadCrowd",
+      "data_source": "/feeds/cad_jobs.json",
+      "marketing_action": "auto_apply_jobs",
+      "frequency": "2_per_day",
+      "va_instruction": "Auto-apply to jobs matching keywords in CAD feed, log accepted jobs to dashboard."
+    },
+    {
+      "id": 5,
+      "name": "Fiverr AI Gig Automation",
+      "platform": "Fiverr",
+      "data_source": "/feeds/fiverr_gigs.json",
+      "marketing_action": "auto_refresh_gigs",
+      "frequency": "daily",
+      "va_instruction": "Maintain Fiverr gigs active; auto-respond to new leads; send order summary to VA Bot."
+    },
+    {
+      "id": 6,
+      "name": "YouTube Automation",
+      "platform": "YouTube",
+      "data_source": "/feeds/youtube_scripts.json",
+      "marketing_action": "auto_upload_videos",
+      "frequency": "3_per_week",
+      "va_instruction": "Upload Shorts and long videos, update description links, push metrics to dashboard."
+    },
+    {
+      "id": 7,
+      "name": "Stock Image/Video Sales",
+      "platform": "AdobeStock/Pond5/Shutterstock",
+      "data_source": "/feeds/stock_assets.json",
+      "marketing_action": "auto_upload_assets",
+      "frequency": "daily",
+      "va_instruction": "Upload 10 assets/day, tag with top-ranking keywords, report approvals."
+    },
+    {
+      "id": 8,
+      "name": "AI Book Publishing (KDP)",
+      "platform": "Amazon KDP",
+      "data_source": "/feeds/books.json",
+      "marketing_action": "auto_publish_books",
+      "frequency": "weekly",
+      "va_instruction": "Publish formatted AI books, extract keywords from title sheet, report royalties."
+    },
+    {
+      "id": 9,
+      "name": "Shopify Digital Products",
+      "platform": "Shopify",
+      "data_source": "/feeds/shopify_products.json",
+      "marketing_action": "email_drip_campaign",
+      "frequency": "weekly",
+      "va_instruction": "Auto-send product launch emails using template set; log conversions."
+    },
+    {
+      "id": 10,
+      "name": "Lakshya Passive Stationery Export",
+      "platform": "Amazon FBA/ShipBob",
+      "data_source": "/feeds/stationery_inventory.json",
+      "marketing_action": "b2b_catalog_emails",
+      "frequency": "biweekly",
+      "va_instruction": "Send catalog to 500 importer emails; sync fulfilled orders to dashboard."
+    }
+  ]
+}
