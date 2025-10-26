@@ -72,10 +72,7 @@ def generate_key():
     else:
         print(f"[TokenManager] Key already exists at {KEY_FILE}")
 
-<<<<<<< HEAD
-=======
 
->>>>>>> 7ce07bc (Auto encrypt & push update)
 def load_key():
     env_key = os.getenv("SECRET_KEY")
     if env_key:
@@ -83,15 +80,14 @@ def load_key():
     if os.path.exists("secret.key"):
         with open("secret.key", "rb") as f:
             return f.read()
-<<<<<<< HEAD
-    raise FileNotFoundError("[TokenManager] secret.key not found. Run generate_key() first.")
-    
-=======
+
+    raise FileNotFoundError(
+        "[TokenManager] secret.key not found. Run generate_key() first.")
+
     raise FileNotFoundError(
         "[TokenManager] secret.key not found. Run generate_key() first.")
 
 
->>>>>>> 7ce07bc (Auto encrypt & push update)
 # ==============================================================
 # 4. Encryption / Decryption
 # ==============================================================
