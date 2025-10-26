@@ -80,3 +80,18 @@ services:
   buildCommand: pip install -r requirements.txt
   startCommand: python printify_connector.py
   autoDeploy: true
+
+services:
+- type: worker
+  name: jravis-printify-connector
+  env: python
+  region: oregon
+  plan: free
+  buildCommand: "pip install -r requirements.txt"
+  startCommand: "python connectors/connectors_printify_connectorv3.py"
+  envVars:
+    - key: PRINTIFY_API_TOKEN
+      sync: false
+    - key: PRINTIFY_SHOP_ID
+      sync: false
+
