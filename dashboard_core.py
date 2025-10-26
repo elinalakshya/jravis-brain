@@ -44,8 +44,28 @@ def get_revenue_summary():
 def get_live_totals():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("SELECT COUNT(*), IFNULL(SUM(amount),0) FROM orders")
-    total_orders, total_revenue = c.fetchone()
+
+    # --- Always make sure the orders table exists ---
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS orders (
+            order_id TEXT PRIMARY KEY,
+            shop_id TEXT,
+            amount NUMERIC,
+            currency TEXT,
+            status TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.commit()
+
+    # --- Query safely ---
+    try:
+        c.execute("SELECT COUNT(*), IFNULL(SUM(amount),0) FROM orders")
+        total_orders, total_revenue = c.fetchone()
+    except sqlite3.OperationalError as e:
+        print("[JRAVIS] Warning:", e)
+        total_orders, total_revenue = 0, 0
+
     conn.close()
     return total_orders, total_revenue
 
