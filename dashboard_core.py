@@ -100,6 +100,27 @@ def check_lock():
         return redirect(url_for("unlock"))
 
 
+import sqlite3, os
+
+
+def init_db():
+    conn = sqlite3.connect("dashboard.db")
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS orders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            stream TEXT,
+            amount REAL,
+            created_at TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+init_db()
+
+
 # ---------- ROUTES ---------- #
 @app.route("/")
 def dashboard():
@@ -162,6 +183,7 @@ def lockout():
     session.clear()
     return redirect(url_for("unlock"))
 
+
 def init_database():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -179,10 +201,10 @@ def init_database():
     conn.close()
     print("[JRAVIS] Database initialized ✔️")
 
+
 # ---------- MAIN ---------- #
 if __name__ == "__main__":
-    init_database()           # <-- keep this line!
+    init_database()  # <-- keep this line!
     port = int(os.getenv("PORT", 10000))
     print(f"[JRAVIS] Live dashboard started on port {port}")
     app.run(host="0.0.0.0", port=port)
-
