@@ -56,3 +56,10 @@ httplib2==0.22.0
 pydantic==1.10.13
 fpdf==1.7.2
 python-multipart==0.0.9
+
+fastapi
+uvicorn
+reportlab
+PyPDF2
+requests
+schedule
