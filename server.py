@@ -1,206 +1,361 @@
-# append to server.py (or create dashboard_api.py and import into server)
-from fastapi import Request
-from fastapi.responses import JSONResponse
-from datetime import datetime
-import re
-
-# Phase -> streams mapping (use names exactly as you gave)
-PHASE_MAP = {
-    "phase1": [
-        "Elina Instagram Reels", "Printify POD Store", "Meshy AI Store",
-        "Cad Crowd Auto Work", "Fiverr AI Gig Automation",
-        "YouTube Automation", "Stock Image/Video Sales",
-        "AI Book Publishing (KDP)", "Shopify Digital Products",
-        "Stationery Export (Lakshya Passive Stationery)"
-    ],
-    "phase2": [
-        "Template/Theme Marketplace", "Course Resell Automation",
-        "Printables Store (Etsy/Creative Market)",
-        "Affiliate Marketing Automation", "AI SaaS Micro-Tools",
-        "Newsletter + Ads Automation", "Subscription Box (Stationery/Digital)",
-        "Gaming Assets Store", "Webflow Template Sales",
-        "Skillshare Course Automation"
-    ],
-    "phase3": [
-        "SaaS Reseller Bots", "Voiceover/AI Dubbing Automation",
-        "Music/Beats Licensing", "Web Automation Scripts Marketplace",
-        "AI Plugin/Extension Sales", "Educational Worksheets Store",
-        "Digital/Virtual Events Automation", "AI Resume/CV Automation",
-        "Crypto Microtask Automation (Legal Only)", "Global API Marketplace"
-    ]
-}
-
-
-def aggregate_by_phase(streams):
-    phases = {
-        "phase1": {
-            "total": 0,
-            "count": 0,
-            "streams": []
-        },
-        "phase2": {
-            "total": 0,
-            "count": 0,
-            "streams": []
-        },
-        "phase3": {
-            "total": 0,
-            "count": 0,
-            "streams": []
-        }
-    }
-    name_map = {s["name"]: s for s in streams}
-    for pkey, names in PHASE_MAP.items():
-        total = 0
-        for n in names:
-            s = name_map.get(n)
-            if s:
-                total += float(s.get("amount", 0))
-                phases[pkey]["streams"].append(s)
-            else:
-                # placeholder zero stream if missing
-                phases[pkey]["streams"].append({
-                    "id": n,
-                    "name": n,
-                    "amount": 0,
-                    "currency": "INR",
-                    "last_updated": None
-                })
-        phases[pkey]["total"] = round(total, 2)
-        phases[pkey]["count"] = len(names)
-    return phases
-
-
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import JSONResponse
-
-app = FastAPI()  # ✅ This defines the FastAPI app instance
-
-
-@app.get("/api/va_dashboard_data")
-def va_dashboard_data():
-    # use existing function get_streams() or call /api/earnings internally
-    try:
-        # if you have get_streams() available:
-        streams = get_streams(
-        )  # returns list of {id,name,amount,currency,last_updated}
-    except Exception:
-        # fallback: call earnings endpoint
-        import requests, os
-        backend = f"http://localhost:{os.getenv('PORT_BACKEND','8000')}"
-        r = requests.get(f"{backend}/api/earnings")
-        streams = r.json().get("streams", [])
-    phases = aggregate_by_phase(streams)
-    total_all = sum([phases[p]["total"] for p in phases])
-    return {
-        "total_all": total_all,
-        "phases": phases,
-        "last_sync": get_status().get("last_sync")
-    }
-
-
-# Simple dashboard chat endpoint — parses a few intents and responds from data
-@app.post("/api/chat")
-async def chat_endpoint(req: Request):
-    data = await req.json()
-    text = (data.get("text", "") or "").lower()
-    # Basic intents
-    if "phase 1" in text or "phase1" in text:
-        phases = va_dashboard_data()["phases"]["phase1"]
-        return JSONResponse({
-            "reply":
-            f"Phase 1 total is ₹{phases['total']}. Top streams: " + ", ".join([
-                s['name']
-                for s in sorted(phases["streams"],
-                                key=lambda x: -float(x.get('amount', 0)))[:3]
-            ])
-        })
-    if "show top" in text or "top" in text:
-        all_streams = []
-        for p in va_dashboard_data()["phases"].values():
-            all_streams += p["streams"]
-        tops = sorted(all_streams,
-                      key=lambda x: -float(x.get("amount", 0)))[:5]
-        return JSONResponse({
-            "reply":
-            "Top streams: " +
-            ", ".join([f"{s['name']} (₹{s['amount']})" for s in tops])
-        })
-    if "total" in text or "income" in text:
-        t = va_dashboard_data()["total_all"]
-        return JSONResponse({
-            "reply":
-            f"Total combined live income across phases is approx ₹{t} per month."
-        })
-    # fallback
-    return JSONResponse({
-        "reply":
-        "Boss, I understood: '" + data.get("text", "") +
-        "'. Ask me about Phase 1/Phase 2/Phase 3, totals, or top streams."
-    })
-
-
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
-import subprocess
+# --- JRAVIS Daily Report: full orchestrator + scheduler ---
 import os
+import logging
+import tempfile
+import threading
+import time
+import uuid
+from datetime import datetime, timedelta
+from typing import Dict
 
-app = FastAPI()
 from fastapi import Query, HTTPException
 from fastapi.responses import JSONResponse
-import threading, logging, os, time
-from datetime import datetime
+
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
+from PyPDF2 import PdfReader, PdfWriter
+
+import smtplib
+from email.mime.application import MIMEApplication
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+
+import requests
+import schedule
+
+# ENV / defaults
+ADMIN_CODE = os.getenv("REPORT_API_CODE", "2040")
+VA_EMAIL = os.getenv("VA_EMAIL")
+VA_EMAIL_PASS = os.getenv("VA_EMAIL_PASS")
+LOCK_CODE = os.getenv("LOCK_CODE", "2040")
+RECIPIENT = os.getenv("REPORT_RECIPIENT", "nrveeresh327@gmail.com")
+FROM_NAME = os.getenv("FROM_NAME", "Dhruvayu - VA BOT")
+BASE_URL = os.getenv("BASE_URL", "https://jravis-backend.onrender.com")
+
+logging.basicConfig(level=logging.INFO)
+
+# In-memory simple token store for approvals
+approval_tokens: Dict[str, Dict] = {}
+approval_lock = threading.Lock()
 
 
+# ---- PDF helpers ----
+def create_simple_pdf(title: str, lines: list, out_path: str):
+    c = canvas.Canvas(out_path, pagesize=A4)
+    width, height = A4
+    y = height - 72
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(72, y, title)
+    y -= 28
+    c.setFont("Helvetica", 10)
+    for line in lines:
+        c.drawString(72, y, line)
+        y -= 14
+        if y < 72:
+            c.showPage()
+            y = height - 72
+    c.showPage()
+    c.save()
+
+
+def encrypt_pdf(input_path: str, output_path: str, password: str):
+    reader = PdfReader(input_path)
+    writer = PdfWriter()
+    for p in reader.pages:
+        writer.add_page(p)
+    # user password to open file
+    writer.encrypt(user_pwd=password, owner_pwd=None, use_128bit=True)
+    with open(output_path, "wb") as f:
+        writer.write(f)
+
+
+# ---- Email helper ----
+def send_email_with_attachments(subject: str, html_body: str,
+                                attachments: Dict[str, bytes]):
+    if not VA_EMAIL or not VA_EMAIL_PASS:
+        logging.error("Missing VA_EMAIL / VA_EMAIL_PASS in env.")
+        raise RuntimeError("Missing email credentials")
+
+    msg = MIMEMultipart()
+    msg["From"] = f"{FROM_NAME} <{VA_EMAIL}>"
+    msg["To"] = RECIPIENT
+    msg["Subject"] = subject
+    msg.attach(MIMEText(html_body, "html"))
+
+    for filename, data in attachments.items():
+        part = MIMEApplication(data, Name=filename)
+        part['Content-Disposition'] = f'attachment; filename="{filename}"'
+        msg.attach(part)
+
+    with smtplib.SMTP("smtp.gmail.com", 587) as server:
+        server.starttls()
+        server.login(VA_EMAIL, VA_EMAIL_PASS)
+        server.send_message(msg)
+    logging.info("📧 Email with attachments sent successfully.")
+
+
+# ---- Business task executed after approval or auto-resume ----
+def perform_daily_tasks(report_date_str: str):
+    # <<< Replace this body with real JRAVIS actions: update DB, kick workflows, save logs, etc. >>>
+    logging.info(f"Performing JRAVIS daily tasks for {report_date_str} ...")
+    # simulate work
+    time.sleep(1)
+    logging.info("Daily tasks completed.")
+    # <<< end replacement area >>>
+
+
+# ---- Orchestrator ----
+def orchestrate_and_wait_for_approval(report_date_str: str, lock_code: str):
+    logging.info("Starting orchestrator thread...")
+    with tempfile.TemporaryDirectory() as td:
+        summary_plain = os.path.join(td, "summary_plain.pdf")
+        summary_encrypted = os.path.join(td, "summary_encrypted.pdf")
+        invoice_pdf = os.path.join(td, "invoice.pdf")
+
+        # TODO: replace these lines with actual log extraction from your system
+        summary_lines = [
+            f"Date: {report_date_str}",
+            "1) What VA Bot did yesterday: (fill with real data)",
+            "2) What VA Bot will do today: (fill with real data)",
+            "3) What VA Bot will do tomorrow: (fill with real data)",
+            "4) Today's scheduled tasks: (fill with real data)",
+            "5) Status of yesterday's tasks: (fill with real data)",
+            "6) Areas the team is working on: (fill with real data)",
+            "7) Issues / progress updates: (fill with real data)",
+            "8) Total earnings so far: ₹X (distance to target: ₹Y)", "",
+            "This Summary PDF is locked with your lock code."
+        ]
+        invoice_lines = [
+            f"Invoice Date: {report_date_str}",
+            "Invoice details: (fill with real invoice data)", "Total: ₹XXXXX"
+        ]
+
+        create_simple_pdf("JRAVIS Summary Report", summary_lines,
+                          summary_plain)
+        create_simple_pdf("JRAVIS Invoice", invoice_lines, invoice_pdf)
+
+        # Encrypt summary
+        encrypt_pdf(summary_plain, summary_encrypted, lock_code)
+
+        with open(summary_encrypted, "rb") as f:
+            summary_bytes = f.read()
+        with open(invoice_pdf, "rb") as f:
+            invoice_bytes = f.read()
+
+        # create approval token and link
+        token = str(uuid.uuid4())
+        approve_link = f"{BASE_URL}/api/approve?token={token}"
+
+        expiry = datetime.utcnow() + timedelta(minutes=10)
+        with approval_lock:
+            approval_tokens[token] = {
+                "approved": False,
+                "expiry": expiry,
+                "created_at": datetime.utcnow()
+            }
+
+        subject = f"✅ JRAVIS Daily Report — {report_date_str}"
+        body_html = f"""
+        <p>Boss, VA BOT has completed today's scheduled tasks.</p>
+        <p><b>Summary PDF:</b> Encrypted with your lock code.</p>
+        <p><b>Invoice PDF:</b> Attached (no lock).</p>
+        <p>
+          <a href="{approve_link}" style="display:inline-block;padding:10px 16px;
+             background:#0b74de;color:#fff;text-decoration:none;border-radius:6px;">
+             Approve Now
+          </a>
+        </p>
+        <p>If you do not click approve within 10 minutes, VA BOT will auto-resume work.</p>
+        """
+
+        attachments = {
+            f"{report_date_str} summary.pdf": summary_bytes,
+            f"{report_date_str} invoices.pdf": invoice_bytes,
+        }
+
+        try:
+            send_email_with_attachments(subject, body_html, attachments)
+        except Exception as e:
+            logging.exception("Failed to send approval email")
+            # still proceed with auto-resume after logging
+        logging.info(
+            f"Approval email sent with token {token}. Waiting up to 10 minutes."
+        )
+
+        # wait up to 10 minutes for approval
+        waited = 0
+        approved = False
+        while waited < 600:
+            with approval_lock:
+                state = approval_tokens.get(token)
+                if state and state.get("approved"):
+                    approved = True
+                    break
+            time.sleep(3)
+            waited += 3
+
+        if approved:
+            logging.info("Approval received. Proceeding with daily tasks.")
+            perform_daily_tasks(report_date_str)
+        else:
+            logging.info(
+                "No approval within 10 minutes. Auto-resuming daily tasks.")
+            perform_daily_tasks(report_date_str)
+
+        with approval_lock:
+            approval_tokens.pop(token, None)
+
+
+# ---- HTTP endpoints ----
 @app.get("/api/send_daily_report")
 def send_daily_report(code: str = Query(...)):
-    """Simple trigger for JRAVIS Daily Report"""
-    if code != os.getenv("REPORT_API_CODE", "2040"):
+    if code != ADMIN_CODE:
         raise HTTPException(status_code=401, detail="Invalid code")
-
-    def orchestrate():
-        try:
-            logging.info("✅ JRAVIS Daily Report: Starting orchestrator...")
-            # ---- Placeholder for real email/PDF logic ----
-            time.sleep(2)
-            logging.info("📧 Report generation simulated successfully.")
-        except Exception as e:
-            logging.error(f"❌ JRAVIS Daily Report failed: {e}")
-
-    threading.Thread(target=orchestrate, daemon=True).start()
+    report_date_str = datetime.now().strftime("%d-%m-%Y")
+    threading.Thread(target=orchestrate_and_wait_for_approval,
+                     args=(report_date_str, LOCK_CODE),
+                     daemon=True).start()
     return JSONResponse({
         "detail": "Daily report orchestrator started",
-        "date": datetime.now().strftime("%d-%m-%Y")
+        "date": report_date_str
     })
 
 
-# Existing routes above this...
-@app.get("/api/send_daily_report")
-async def send_daily_report(request: Request):
-    """Trigger daily report email with lock code verification"""
-    params = dict(request.query_params)
-    code = params.get("code", "")
+@app.get("/api/approve")
+def approve(token: str = Query(...)):
+    with approval_lock:
+        t = approval_tokens.get(token)
+        if not t:
+            return JSONResponse({"detail": "Invalid or expired token."},
+                                status_code=404)
+        t["approved"] = True
+    return JSONResponse(
+        {"detail": "Approval recorded. VA BOT will proceed immediately."})
 
-    # ✅ Security check — must match your lock code
-    if code != "2040":
-        return JSONResponse({
-            "status": "error",
-            "message": "Unauthorized"
-        },
-                            status_code=401)
 
+# ---- Scheduler: trigger the endpoint daily at 10:00 AM IST ----
+def trigger_daily_report():
     try:
-        # Run the email sender script
-        subprocess.run(["python", "auto_dashboard_daily.py"],
-                       cwd=os.getcwd(),
-                       check=True)
-        return JSONResponse({
-            "status": "success",
-            "message": "Daily report sent successfully"
-        })
+        url = f"{BASE_URL}/api/send_daily_report?code={ADMIN_CODE}"
+        r = requests.get(url, timeout=30)
+        logging.info(
+            f"[Scheduler] Triggered daily report: {r.status_code} {r.text}")
     except Exception as e:
-        return JSONResponse({
-            "status": "error",
-            "message": str(e)
-        },
-                            status_code=500)
+        logging.error(f"[Scheduler] Failed to trigger daily report: {e}")
+
+
+# Schedule job; this runs in background thread and does not block startup
+schedule.every().day.at("10:00").do(trigger_daily_report)
+
+
+def scheduler_loop():
+    while True:
+        schedule.run_pending()
+        time.sleep(60)
+
+
+threading.Thread(target=scheduler_loop, daemon=True).start()
+
+# --- end JRAVIS Daily Report block ---
+
+
+# ---- Weekly Report Scheduler (Sunday 12:00 AM IST) ----
+def orchestrate_weekly_report():
+    report_date_str = datetime.now().strftime("%d-%m-%Y")
+    week_label = datetime.now().strftime("Week-%W %Y")
+    logging.info(f"🗓️  Starting Weekly JRAVIS Report for {week_label}")
+
+    with tempfile.TemporaryDirectory() as td:
+        weekly_summary_plain = os.path.join(td, "weekly_summary.pdf")
+        weekly_summary_encrypted = os.path.join(
+            td, "weekly_summary_encrypted.pdf")
+        weekly_invoice_pdf = os.path.join(td, "weekly_invoice.pdf")
+
+        # You can replace below with real weekly aggregation later
+        summary_lines = [
+            f"Weekly Summary Report — {week_label}",
+            f"Generated on: {report_date_str}", "",
+            "1) Total tasks completed this week: (fill from logs)",
+            "2) Weekly earnings: ₹XXXXX",
+            "3) Pending actions carried forward:",
+            "4) Upcoming goals for next week:", "5) Issues / highlights:", "",
+            "This report is encrypted with your lock code."
+        ]
+        invoice_lines = [
+            f"Weekly Invoice — {week_label}",
+            f"Generated on: {report_date_str}", "",
+            "Invoice details for the week:", "Total Amount: ₹XXXXX", "",
+            "Thank you, Boss!"
+        ]
+
+        create_simple_pdf("JRAVIS Weekly Summary", summary_lines,
+                          weekly_summary_plain)
+        create_simple_pdf("JRAVIS Weekly Invoice", invoice_lines,
+                          weekly_invoice_pdf)
+
+        encrypt_pdf(weekly_summary_plain, weekly_summary_encrypted, LOCK_CODE)
+
+        with open(weekly_summary_encrypted, "rb") as f:
+            summary_bytes = f.read()
+        with open(weekly_invoice_pdf, "rb") as f:
+            invoice_bytes = f.read()
+
+        token = str(uuid.uuid4())
+        approve_link = f"{BASE_URL}/api/approve?token={token}"
+        expiry = datetime.utcnow() + timedelta(minutes=10)
+        with approval_lock:
+            approval_tokens[token] = {
+                "approved": False,
+                "expiry": expiry,
+                "created_at": datetime.utcnow()
+            }
+
+        subject = f"📅 JRAVIS Weekly Report — {week_label}"
+        body_html = f"""
+        <p>Boss, here’s your JRAVIS Weekly Summary and Invoice for {week_label}.</p>
+        <p><b>Summary PDF:</b> Encrypted with your lock code.</p>
+        <p><b>Invoice PDF:</b> Attached (no lock).</p>
+        <p>
+          <a href="{approve_link}" style="display:inline-block;padding:10px 16px;
+             background:#0b74de;color:#fff;text-decoration:none;border-radius:6px;">
+             Approve Now
+          </a>
+        </p>
+        <p>If no approval in 10 minutes, VA BOT will auto-resume work.</p>
+        """
+
+        attachments = {
+            f"{week_label} summary.pdf": summary_bytes,
+            f"{week_label} invoices.pdf": invoice_bytes,
+        }
+
+        try:
+            send_email_with_attachments(subject, body_html, attachments)
+        except Exception as e:
+            logging.exception("Failed to send weekly email")
+
+        waited = 0
+        approved = False
+        while waited < 600:
+            with approval_lock:
+                state = approval_tokens.get(token)
+                if state and state.get("approved"):
+                    approved = True
+                    break
+            time.sleep(3)
+            waited += 3
+
+        if approved:
+            logging.info("Weekly report approved. Executing weekly tasks.")
+            perform_daily_tasks(report_date_str)  # reuse daily task handler
+        else:
+            logging.info("Weekly report auto-resuming tasks.")
+            perform_daily_tasks(report_date_str)
+
+        with approval_lock:
+            approval_tokens.pop(token, None)
+    logging.info(f"✅ Weekly JRAVIS Report process completed for {week_label}")
+
+
+# ---- Schedule it: Sunday 12:00 AM IST ----
+schedule.every().sunday.at("00:00").do(orchestrate_weekly_report)
