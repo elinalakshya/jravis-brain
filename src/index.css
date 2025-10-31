@@ -1,0 +1,117 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---------------------------
+   Global JRAVIS Mission 2040 Styles
+---------------------------- */
+:root {
+  --mission-bg: #0b0b0b;
+  --mission-card: #141414;
+  --mission-accent: #00ff88;
+  --mission-text: #f0f0f0;
+  --mission-subtext: #9ca3af;
+  --mission-border: #1f1f1f;
+}
+
+html, body {
+  @apply bg-[var(--mission-bg)] text-[var(--mission-text)] font-sans;
+  min-height: 100vh;
+  overflow-x: hidden;
+  scroll-behavior: smooth;
+}
+
+/* Neon glowing scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #0b0b0b;
+}
+::-webkit-scrollbar-thumb {
+  background: #00ff88;
+  border-radius: 10px;
+  box-shadow: 0 0 10px #00ff88;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #00cc66;
+}
+
+/* Neon text glow utility */
+.neon-text {
+  color: var(--mission-accent);
+  text-shadow: 0 0 5px var(--mission-accent),
+               0 0 15px var(--mission-accent),
+               0 0 30px var(--mission-accent);
+}
+
+/* JRAVIS animated pulse for active systems */
+@keyframes pulseNeon {
+  0%, 100% {
+    box-shadow: 0 0 10px #00ff88, 0 0 20px #00ff88;
+  }
+  50% {
+    box-shadow: 0 0 25px #00ff88, 0 0 50px #00ff88;
+  }
+}
+
+.pulse-neon {
+  animation: pulseNeon 2s infinite;
+}
+
+/* Dashboard grid & glow panels */
+.jravis-card {
+  @apply bg-[var(--mission-card)] border border-[var(--mission-border)] rounded-2xl shadow-neon p-6;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.jravis-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 0 25px #00ff88;
+}
+
+/* Lock screen glass effect */
+.glass-card {
+  background: rgba(20, 20, 20, 0.7);
+  border: 1px solid rgba(0, 255, 136, 0.2);
+  backdrop-filter: blur(10px);
+  border-radius: 1rem;
+  box-shadow: 0 0 20px rgba(0, 255, 136, 0.1);
+}
+
+/* Button glow */
+.btn-neon {
+  @apply text-black font-semibold py-2 px-4 rounded-lg transition-all duration-300;
+  background: var(--mission-accent);
+  box-shadow: 0 0 10px var(--mission-accent);
+}
+.btn-neon:hover {
+  background: #00cc66;
+  box-shadow: 0 0 20px #00ff88, 0 0 40px #00ff88;
+}
+
+/* Header gradient glow */
+.jravis-header {
+  background: linear-gradient(90deg, #00ff88 0%, #00ccff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-family: 'Orbitron', sans-serif;
+}
+
+/* Table styling */
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+th, td {
+  padding: 0.75rem;
+  border-bottom: 1px solid #1f1f1f;
+}
+th {
+  color: var(--mission-accent);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.85rem;
+}
+tr:hover td {
+  background-color: rgba(0, 255, 136, 0.05);
+}

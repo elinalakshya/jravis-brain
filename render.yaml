@@ -95,3 +95,22 @@ services:
     - key: PRINTIFY_SHOP_ID
       sync: false
 
+
+services:
+  - type: web
+    name: jravis-backend
+    env: docker
+    dockerfilePath: backend.Dockerfile
+    plan: free
+
+  - type: web
+    name: jravis-frontend
+    env: docker
+    dockerfilePath: web.Dockerfile
+    plan: free
+
+cronJobs:
+  - name: jravis-daily-email
+    schedule: "30 4 * * *"  # 10:00 AM IST
+    service: jravis-backend
+    command: "python /app/email_automation_daemon.py --once"

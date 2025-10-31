@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* JRAVIS Custom Styling */
+body {
+  @apply bg-dark text-white min-h-screen;
+  font-family: 'Inter', sans-serif;
+}
+
+input, button {
+  @apply focus:outline-none;
+}
+
+button {
+  @apply transition-all duration-200 hover:opacity-90;
+}
+
+/* Scrollbar tweaks */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 4px;
+}

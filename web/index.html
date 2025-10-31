@@ -1,0 +1,71 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>JRAVIS Income Dashboard</title>
+    <style>
+      body {
+        font-family: system-ui;
+        margin: 2rem;
+        background: #f7f7f7;
+      }
+      h1 {
+        color: #333;
+      }
+      .card {
+        background: white;
+        padding: 1rem;
+        margin: 0.5rem 0;
+        border-radius: 8px;
+        box-shadow: 0 1px 3px #ccc;
+      }
+      button {
+        padding: 0.5rem 1rem;
+        border: none;
+        background: #007bff;
+        color: #fff;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>JRAVIS Income Dashboard</h1>
+    <div id="total">Loading…</div>
+    <button onclick="trigger()">Trigger Sync</button>
+    <div id="list"></div>
+
+    <script>
+      const API = "http://localhost:8000/api";
+
+      async function load() {
+        const r = await fetch(API + "/earnings");
+        const d = await r.json();
+        document.getElementById("total").innerHTML =
+          "<h2>Total: " +
+          d.total +
+          " USD</h2><small>Last sync: " +
+          (d.last_sync || "never") +
+          "</small>";
+        const list = document.getElementById("list");
+        list.innerHTML = d.streams
+          .map(
+            (s) =>
+              `<div class='card'><b>${s.name}</b>: ${s.amount} ${s.currency}<br><small>${s.last_updated}</small></div>`,
+          )
+          .join("");
+      }
+
+      async function trigger() {
+        await fetch(API + "/trigger", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ source: "manual" }),
+        });
+        alert("Sync triggered. Refresh after 10 s.");
+      }
+
+      load();
+    </script>
+  </body>
+</html>
