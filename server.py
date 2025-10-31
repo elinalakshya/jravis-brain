@@ -1,29 +1,27 @@
-# --- JRAVIS Daily Report: full orchestrator + scheduler ---
-import os
-import logging
-import tempfile
-import threading
-import time
-import uuid
+# ============================================================
+# JRAVIS Backend – Daily & Weekly Report Automation (FastAPI)
+# ============================================================
+
+from fastapi import FastAPI, Query, HTTPException
+from fastapi.responses import JSONResponse
+import os, logging, tempfile, threading, time, uuid, smtplib, schedule, requests
 from datetime import datetime, timedelta
 from typing import Dict
-
-from fastapi import Query, HTTPException
-from fastapi.responses import JSONResponse
-
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from PyPDF2 import PdfReader, PdfWriter
-
-import smtplib
 from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
-import requests
-import schedule
+# ------------------------------------------------------------
+# App & global setup
+# ------------------------------------------------------------
+app = FastAPI(title="JRAVIS Backend – Reports Service")
+logging.basicConfig(level=logging.INFO,
+                    format="%(asctime)s %(levelname)s: %(message)s")
 
-# ENV / defaults
+# Environment variables
 ADMIN_CODE = os.getenv("REPORT_API_CODE", "2040")
 VA_EMAIL = os.getenv("VA_EMAIL")
 VA_EMAIL_PASS = os.getenv("VA_EMAIL_PASS")
@@ -32,18 +30,18 @@ RECIPIENT = os.getenv("REPORT_RECIPIENT", "nrveeresh327@gmail.com")
 FROM_NAME = os.getenv("FROM_NAME", "Dhruvayu - VA BOT")
 BASE_URL = os.getenv("BASE_URL", "https://jravis-backend.onrender.com")
 
-logging.basicConfig(level=logging.INFO)
-
-# In-memory simple token store for approvals
+# Token store for approvals
 approval_tokens: Dict[str, Dict] = {}
 approval_lock = threading.Lock()
 
 
-# ---- PDF helpers ----
-def create_simple_pdf(title: str, lines: list, out_path: str):
+# ------------------------------------------------------------
+# PDF helpers
+# ------------------------------------------------------------
+def create_pdf(title: str, lines: list, out_path: str):
     c = canvas.Canvas(out_path, pagesize=A4)
-    width, height = A4
-    y = height - 72
+    w, h = A4
+    y = h - 72
     c.setFont("Helvetica-Bold", 16)
     c.drawString(72, y, title)
     y -= 28
@@ -53,171 +51,157 @@ def create_simple_pdf(title: str, lines: list, out_path: str):
         y -= 14
         if y < 72:
             c.showPage()
-            y = height - 72
+            y = h - 72
     c.showPage()
     c.save()
 
 
-def encrypt_pdf(input_path: str, output_path: str, password: str):
-    reader = PdfReader(input_path)
+def encrypt_pdf(src: str, dst: str, password: str):
+    reader = PdfReader(src)
     writer = PdfWriter()
     for p in reader.pages:
         writer.add_page(p)
-    # user password to open file
     writer.encrypt(user_pwd=password, owner_pwd=None, use_128bit=True)
-    with open(output_path, "wb") as f:
+    with open(dst, "wb") as f:
         writer.write(f)
 
 
-# ---- Email helper ----
-def send_email_with_attachments(subject: str, html_body: str,
-                                attachments: Dict[str, bytes]):
+# ------------------------------------------------------------
+# Email helper
+# ------------------------------------------------------------
+def send_email(subject: str, html_body: str, attachments: Dict[str, bytes]):
     if not VA_EMAIL or not VA_EMAIL_PASS:
-        logging.error("Missing VA_EMAIL / VA_EMAIL_PASS in env.")
-        raise RuntimeError("Missing email credentials")
-
+        raise RuntimeError("Missing VA_EMAIL or VA_EMAIL_PASS in environment")
     msg = MIMEMultipart()
     msg["From"] = f"{FROM_NAME} <{VA_EMAIL}>"
     msg["To"] = RECIPIENT
     msg["Subject"] = subject
     msg.attach(MIMEText(html_body, "html"))
-
-    for filename, data in attachments.items():
-        part = MIMEApplication(data, Name=filename)
-        part['Content-Disposition'] = f'attachment; filename="{filename}"'
+    for name, data in attachments.items():
+        part = MIMEApplication(data, Name=name)
+        part["Content-Disposition"] = f'attachment; filename="{name}"'
         msg.attach(part)
+    with smtplib.SMTP("smtp.gmail.com", 587) as s:
+        s.starttls()
+        s.login(VA_EMAIL, VA_EMAIL_PASS)
+        s.send_message(msg)
+    logging.info("📧 Email sent successfully")
 
-    with smtplib.SMTP("smtp.gmail.com", 587) as server:
-        server.starttls()
-        server.login(VA_EMAIL, VA_EMAIL_PASS)
-        server.send_message(msg)
-    logging.info("📧 Email with attachments sent successfully.")
 
-
-# ---- Business task executed after approval or auto-resume ----
-def perform_daily_tasks(report_date_str: str):
-    # <<< Replace this body with real JRAVIS actions: update DB, kick workflows, save logs, etc. >>>
-    logging.info(f"Performing JRAVIS daily tasks for {report_date_str} ...")
-    # simulate work
+# ------------------------------------------------------------
+# Core business action
+# ------------------------------------------------------------
+def perform_daily_tasks(tag: str):
+    logging.info(f"Running JRAVIS tasks for {tag} ...")
     time.sleep(1)
-    logging.info("Daily tasks completed.")
-    # <<< end replacement area >>>
+    logging.info("JRAVIS tasks completed ✅")
 
 
-# ---- Orchestrator ----
-def orchestrate_and_wait_for_approval(report_date_str: str, lock_code: str):
-    logging.info("Starting orchestrator thread...")
+# ------------------------------------------------------------
+# Orchestrator (daily / weekly)
+# ------------------------------------------------------------
+def orchestrate_report(mode: str, report_date: datetime):
+    label = report_date.strftime("%d-%m-%Y")
+    week_label = report_date.strftime("Week-%W %Y")
+    tag = week_label if mode == "weekly" else label
+    logging.info(f"🌀 Starting {mode.upper()} report for {tag}")
+
     with tempfile.TemporaryDirectory() as td:
-        summary_plain = os.path.join(td, "summary_plain.pdf")
-        summary_encrypted = os.path.join(td, "summary_encrypted.pdf")
-        invoice_pdf = os.path.join(td, "invoice.pdf")
+        s_plain = os.path.join(td, f"{mode}_summary.pdf")
+        s_enc = os.path.join(td, f"{mode}_summary_enc.pdf")
+        inv_path = os.path.join(td, f"{mode}_invoice.pdf")
 
-        # TODO: replace these lines with actual log extraction from your system
+        # placeholder lines – replace later with live JRAVIS data
         summary_lines = [
-            f"Date: {report_date_str}",
-            "1) What VA Bot did yesterday: (fill with real data)",
-            "2) What VA Bot will do today: (fill with real data)",
-            "3) What VA Bot will do tomorrow: (fill with real data)",
-            "4) Today's scheduled tasks: (fill with real data)",
-            "5) Status of yesterday's tasks: (fill with real data)",
-            "6) Areas the team is working on: (fill with real data)",
-            "7) Issues / progress updates: (fill with real data)",
-            "8) Total earnings so far: ₹X (distance to target: ₹Y)", "",
-            "This Summary PDF is locked with your lock code."
+            f"{mode.capitalize()} Summary — {tag}",
+            "-------------------------------------------",
+            "1) Completed tasks: ...", "2) Earnings: ₹XXXXX",
+            "3) Pending / issues: ...", "4) Next goals: ...", "",
+            "Summary is encrypted with your lock code."
         ]
         invoice_lines = [
-            f"Invoice Date: {report_date_str}",
-            "Invoice details: (fill with real invoice data)", "Total: ₹XXXXX"
+            f"{mode.capitalize()} Invoice — {tag}",
+            "-------------------------------------------", "Details...",
+            "Total: ₹XXXXX"
         ]
 
-        create_simple_pdf("JRAVIS Summary Report", summary_lines,
-                          summary_plain)
-        create_simple_pdf("JRAVIS Invoice", invoice_lines, invoice_pdf)
+        create_pdf(f"JRAVIS {mode.capitalize()} Summary", summary_lines,
+                   s_plain)
+        create_pdf(f"JRAVIS {mode.capitalize()} Invoice", invoice_lines,
+                   inv_path)
+        encrypt_pdf(s_plain, s_enc, LOCK_CODE)
 
-        # Encrypt summary
-        encrypt_pdf(summary_plain, summary_encrypted, lock_code)
+        with open(s_enc, "rb") as f:
+            s_bytes = f.read()
+        with open(inv_path, "rb") as f:
+            inv_bytes = f.read()
 
-        with open(summary_encrypted, "rb") as f:
-            summary_bytes = f.read()
-        with open(invoice_pdf, "rb") as f:
-            invoice_bytes = f.read()
-
-        # create approval token and link
         token = str(uuid.uuid4())
         approve_link = f"{BASE_URL}/api/approve?token={token}"
-
-        expiry = datetime.utcnow() + timedelta(minutes=10)
         with approval_lock:
             approval_tokens[token] = {
                 "approved": False,
-                "expiry": expiry,
-                "created_at": datetime.utcnow()
+                "expiry": datetime.utcnow() + timedelta(minutes=10)
             }
 
-        subject = f"✅ JRAVIS Daily Report — {report_date_str}"
-        body_html = f"""
-        <p>Boss, VA BOT has completed today's scheduled tasks.</p>
-        <p><b>Summary PDF:</b> Encrypted with your lock code.</p>
-        <p><b>Invoice PDF:</b> Attached (no lock).</p>
-        <p>
-          <a href="{approve_link}" style="display:inline-block;padding:10px 16px;
-             background:#0b74de;color:#fff;text-decoration:none;border-radius:6px;">
-             Approve Now
-          </a>
-        </p>
-        <p>If you do not click approve within 10 minutes, VA BOT will auto-resume work.</p>
+        subj = f"✅ JRAVIS {mode.capitalize()} Report — {tag}"
+        body = f"""
+        <p>Boss, here’s your {mode} JRAVIS report ({tag}).</p>
+        <p><b>Summary:</b> Encrypted with your lock code.<br>
+           <b>Invoice:</b> Attached (no lock).</p>
+        <p><a href="{approve_link}" style="padding:10px 16px;
+           background:#0b74de;color:#fff;text-decoration:none;border-radius:6px;">Approve Now</a></p>
+        <p>If no approval in 10 minutes, VA BOT will auto-resume work.</p>
         """
 
         attachments = {
-            f"{report_date_str} summary.pdf": summary_bytes,
-            f"{report_date_str} invoices.pdf": invoice_bytes,
+            f"{tag} summary.pdf": s_bytes,
+            f"{tag} invoices.pdf": inv_bytes
         }
-
         try:
-            send_email_with_attachments(subject, body_html, attachments)
+            send_email(subj, body, attachments)
         except Exception as e:
-            logging.exception("Failed to send approval email")
-            # still proceed with auto-resume after logging
-        logging.info(
-            f"Approval email sent with token {token}. Waiting up to 10 minutes."
-        )
+            logging.error(f"Email failed: {e}")
 
-        # wait up to 10 minutes for approval
-        waited = 0
-        approved = False
+        waited, approved = 0, False
         while waited < 600:
             with approval_lock:
-                state = approval_tokens.get(token)
-                if state and state.get("approved"):
+                if approval_tokens.get(token, {}).get("approved"):
                     approved = True
                     break
             time.sleep(3)
             waited += 3
 
-        if approved:
-            logging.info("Approval received. Proceeding with daily tasks.")
-            perform_daily_tasks(report_date_str)
-        else:
-            logging.info(
-                "No approval within 10 minutes. Auto-resuming daily tasks.")
-            perform_daily_tasks(report_date_str)
-
+        if approved: logging.info(f"{mode.title()} report approved.")
+        else: logging.info(f"{mode.title()} auto-resumed (no approval).")
+        perform_daily_tasks(tag)
         with approval_lock:
             approval_tokens.pop(token, None)
 
 
-# ---- HTTP endpoints ----
+# ------------------------------------------------------------
+# Routes
+# ------------------------------------------------------------
+@app.get("/")
+def home():
+    return {"status": "JRAVIS backend is live ✅"}
+
+
+@app.get("/healthz")
+def health():
+    return {"status": "ok"}
+
+
 @app.get("/api/send_daily_report")
 def send_daily_report(code: str = Query(...)):
     if code != ADMIN_CODE:
         raise HTTPException(status_code=401, detail="Invalid code")
-    report_date_str = datetime.now().strftime("%d-%m-%Y")
-    threading.Thread(target=orchestrate_and_wait_for_approval,
-                     args=(report_date_str, LOCK_CODE),
+    threading.Thread(target=orchestrate_report,
+                     args=("daily", datetime.now()),
                      daemon=True).start()
     return JSONResponse({
         "detail": "Daily report orchestrator started",
-        "date": report_date_str
+        "date": datetime.now().strftime("%d-%m-%Y")
     })
 
 
@@ -229,23 +213,22 @@ def approve(token: str = Query(...)):
             return JSONResponse({"detail": "Invalid or expired token."},
                                 status_code=404)
         t["approved"] = True
-    return JSONResponse(
-        {"detail": "Approval recorded. VA BOT will proceed immediately."})
+    return JSONResponse({"detail": "Approval recorded. VA BOT will proceed."})
 
 
-# ---- Scheduler: trigger the endpoint daily at 10:00 AM IST ----
-def trigger_daily_report():
-    try:
-        url = f"{BASE_URL}/api/send_daily_report?code={ADMIN_CODE}"
-        r = requests.get(url, timeout=30)
-        logging.info(
-            f"[Scheduler] Triggered daily report: {r.status_code} {r.text}")
-    except Exception as e:
-        logging.error(f"[Scheduler] Failed to trigger daily report: {e}")
+# ------------------------------------------------------------
+# Scheduler – daily & weekly
+# ------------------------------------------------------------
+def trigger_daily():
+    orchestrate_report("daily", datetime.now())
 
 
-# Schedule job; this runs in background thread and does not block startup
-schedule.every().day.at("10:00").do(trigger_daily_report)
+def trigger_weekly():
+    orchestrate_report("weekly", datetime.now())
+
+
+schedule.every().day.at("10:00").do(trigger_daily)
+schedule.every().sunday.at("00:00").do(trigger_weekly)
 
 
 def scheduler_loop():
@@ -255,107 +238,6 @@ def scheduler_loop():
 
 
 threading.Thread(target=scheduler_loop, daemon=True).start()
-
-# --- end JRAVIS Daily Report block ---
-
-
-# ---- Weekly Report Scheduler (Sunday 12:00 AM IST) ----
-def orchestrate_weekly_report():
-    report_date_str = datetime.now().strftime("%d-%m-%Y")
-    week_label = datetime.now().strftime("Week-%W %Y")
-    logging.info(f"🗓️  Starting Weekly JRAVIS Report for {week_label}")
-
-    with tempfile.TemporaryDirectory() as td:
-        weekly_summary_plain = os.path.join(td, "weekly_summary.pdf")
-        weekly_summary_encrypted = os.path.join(
-            td, "weekly_summary_encrypted.pdf")
-        weekly_invoice_pdf = os.path.join(td, "weekly_invoice.pdf")
-
-        # You can replace below with real weekly aggregation later
-        summary_lines = [
-            f"Weekly Summary Report — {week_label}",
-            f"Generated on: {report_date_str}", "",
-            "1) Total tasks completed this week: (fill from logs)",
-            "2) Weekly earnings: ₹XXXXX",
-            "3) Pending actions carried forward:",
-            "4) Upcoming goals for next week:", "5) Issues / highlights:", "",
-            "This report is encrypted with your lock code."
-        ]
-        invoice_lines = [
-            f"Weekly Invoice — {week_label}",
-            f"Generated on: {report_date_str}", "",
-            "Invoice details for the week:", "Total Amount: ₹XXXXX", "",
-            "Thank you, Boss!"
-        ]
-
-        create_simple_pdf("JRAVIS Weekly Summary", summary_lines,
-                          weekly_summary_plain)
-        create_simple_pdf("JRAVIS Weekly Invoice", invoice_lines,
-                          weekly_invoice_pdf)
-
-        encrypt_pdf(weekly_summary_plain, weekly_summary_encrypted, LOCK_CODE)
-
-        with open(weekly_summary_encrypted, "rb") as f:
-            summary_bytes = f.read()
-        with open(weekly_invoice_pdf, "rb") as f:
-            invoice_bytes = f.read()
-
-        token = str(uuid.uuid4())
-        approve_link = f"{BASE_URL}/api/approve?token={token}"
-        expiry = datetime.utcnow() + timedelta(minutes=10)
-        with approval_lock:
-            approval_tokens[token] = {
-                "approved": False,
-                "expiry": expiry,
-                "created_at": datetime.utcnow()
-            }
-
-        subject = f"📅 JRAVIS Weekly Report — {week_label}"
-        body_html = f"""
-        <p>Boss, here’s your JRAVIS Weekly Summary and Invoice for {week_label}.</p>
-        <p><b>Summary PDF:</b> Encrypted with your lock code.</p>
-        <p><b>Invoice PDF:</b> Attached (no lock).</p>
-        <p>
-          <a href="{approve_link}" style="display:inline-block;padding:10px 16px;
-             background:#0b74de;color:#fff;text-decoration:none;border-radius:6px;">
-             Approve Now
-          </a>
-        </p>
-        <p>If no approval in 10 minutes, VA BOT will auto-resume work.</p>
-        """
-
-        attachments = {
-            f"{week_label} summary.pdf": summary_bytes,
-            f"{week_label} invoices.pdf": invoice_bytes,
-        }
-
-        try:
-            send_email_with_attachments(subject, body_html, attachments)
-        except Exception as e:
-            logging.exception("Failed to send weekly email")
-
-        waited = 0
-        approved = False
-        while waited < 600:
-            with approval_lock:
-                state = approval_tokens.get(token)
-                if state and state.get("approved"):
-                    approved = True
-                    break
-            time.sleep(3)
-            waited += 3
-
-        if approved:
-            logging.info("Weekly report approved. Executing weekly tasks.")
-            perform_daily_tasks(report_date_str)  # reuse daily task handler
-        else:
-            logging.info("Weekly report auto-resuming tasks.")
-            perform_daily_tasks(report_date_str)
-
-        with approval_lock:
-            approval_tokens.pop(token, None)
-    logging.info(f"✅ Weekly JRAVIS Report process completed for {week_label}")
-
-
-# ---- Schedule it: Sunday 12:00 AM IST ----
-schedule.every().sunday.at("00:00").do(orchestrate_weekly_report)
+# ------------------------------------------------------------
+# End of file
+# ------------------------------------------------------------
