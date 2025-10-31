@@ -146,10 +146,35 @@ import subprocess
 import os
 
 app = FastAPI()
+from fastapi import Query, HTTPException
+from fastapi.responses import JSONResponse
+import threading, logging, os, time
+from datetime import datetime
+
+
+@app.get("/api/send_daily_report")
+def send_daily_report(code: str = Query(...)):
+    """Simple trigger for JRAVIS Daily Report"""
+    if code != os.getenv("REPORT_API_CODE", "2040"):
+        raise HTTPException(status_code=401, detail="Invalid code")
+
+    def orchestrate():
+        try:
+            logging.info("✅ JRAVIS Daily Report: Starting orchestrator...")
+            # ---- Placeholder for real email/PDF logic ----
+            time.sleep(2)
+            logging.info("📧 Report generation simulated successfully.")
+        except Exception as e:
+            logging.error(f"❌ JRAVIS Daily Report failed: {e}")
+
+    threading.Thread(target=orchestrate, daemon=True).start()
+    return JSONResponse({
+        "detail": "Daily report orchestrator started",
+        "date": datetime.now().strftime("%d-%m-%Y")
+    })
+
 
 # Existing routes above this...
-
-
 @app.get("/api/send_daily_report")
 async def send_daily_report(request: Request):
     """Trigger daily report email with lock code verification"""
