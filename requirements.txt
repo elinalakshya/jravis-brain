@@ -45,3 +45,14 @@ Flask
 
 requests>=2.31.0
 rich>=13.7.0
+
+fastapi==0.120.2
+uvicorn==0.38.0
+requests==2.32.3
+google-auth==2.42.0
+google-auth-oauthlib==1.2.2
+google-auth-httplib2==0.2.0
+httplib2==0.22.0
+pydantic==1.10.13
+fpdf==1.7.2
+python-multipart==0.0.9
