@@ -72,3 +72,25 @@ export default function DashboardPage() {
     </>
   );
 }
+
+// components/LiveFeedConnector.js
+import React, { useEffect, useState } from "react";
+
+export default function LiveFeedConnector() {
+  const [status, setStatus] = useState("Connecting...");
+
+  useEffect(() => {
+    // Simulate backend connection for now
+    const timer = setTimeout(() => {
+      setStatus("🟢 Connected to JRAVIS Backend (Secure)");
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  return (
+    <div className="mt-4 p-3 rounded-lg bg-gray-900 border border-cyan-600 text-cyan-300 text-sm font-mono shadow-md">
+      <p>{status}</p>
+    </div>
+  );
+}

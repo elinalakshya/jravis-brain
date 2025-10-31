@@ -723,34 +723,271 @@ def watchdog_loop():
 
 threading.Thread(target=watchdog_loop, daemon=True).start()
 
-import schedule, smtplib, threading, time
-from email.mime.text import MIMEText
+import os
+import logging
+import tempfile
+import threading
+import time
+import uuid
+from datetime import datetime, timedelta
+from typing import Dict
+
+from fastapi import FastAPI, Query, HTTPException
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
+from PyPDF2 import PdfReader, PdfWriter
+
+import smtplib
+from email.mime.base import MIMEBase
+from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email import encoders
+
+# ---- Configuration - use env vars ----
+ADMIN_CODE = os.getenv(
+    "REPORT_API_CODE",
+    "2040")  # code used in the GET endpoint (your curl used 2040)
+VA_EMAIL = os.getenv("VA_EMAIL")
+VA_EMAIL_PASS = os.getenv("VA_EMAIL_PASS")  # use app password for Gmail
+LOCK_CODE = os.getenv("LOCK_CODE",
+                      "your-lock-code")  # code used to encrypt summary PDF
+RECIPIENT = os.getenv("REPORT_RECIPIENT", "nrveeresh327@gmail.com")
+FROM_NAME = os.getenv("FROM_NAME", "Dhruvayu - VA BOT")
+
+# Logging
+logging.basicConfig(level=logging.INFO)
+
+app = FastAPI(title="JRAVIS Daily Report Service")
+
+# In-memory approval token store (simple)
+approval_tokens: Dict[str, Dict] = {}
+approval_lock = threading.Lock()
 
 
-def send_daily_email():
-    sender = os.getenv("VA_EMAIL")
-    password = os.getenv("VA_EMAIL_PASS")
-    receiver = "nrveeresh327@gmail.com"
-    subject = "✅ VA BOT Daily Report"
-    body = "Boss, VA BOT has completed today’s scheduled tasks successfully."
+# ---- Helper: create simple PDF via reportlab ----
+def create_simple_pdf(text_lines, filepath):
+    c = canvas.Canvas(filepath, pagesize=A4)
+    width, height = A4
+    y = height - 72
+    c.setFont("Helvetica-Bold", 14)
+    c.drawString(72, y, "JRAVIS Daily Report")
+    y -= 28
+    c.setFont("Helvetica", 10)
+    for line in text_lines:
+        c.drawString(72, y, line)
+        y -= 16
+        if y < 72:
+            c.showPage()
+            y = height - 72
+    c.showPage()
+    c.save()
+
+
+# ---- Helper: encrypt PDF using PyPDF2 ----
+def encrypt_pdf(input_path, output_path, password):
+    reader = PdfReader(input_path)
+    writer = PdfWriter()
+    for page in reader.pages:
+        writer.add_page(page)
+    # user_pwd = password to open; owner_pwd left None -> random
+    writer.encrypt(user_pwd=password, owner_pwd=None, use_128bit=True)
+    with open(output_path, "wb") as f_out:
+        writer.write(f_out)
+
+
+# ---- Helper: send email with attachments ----
+def send_email_with_attachments(subject, body_text, attachments: Dict[str,
+                                                                      bytes]):
+    if not VA_EMAIL or not VA_EMAIL_PASS:
+        logging.error("VA_EMAIL or VA_EMAIL_PASS not set in environment.")
+        raise RuntimeError("Missing email credentials in environment")
+
     msg = MIMEMultipart()
-    msg["From"] = sender
-    msg["To"] = receiver
+    msg["From"] = f"{FROM_NAME} <{VA_EMAIL}>"
+    msg["To"] = RECIPIENT
     msg["Subject"] = subject
-    msg.attach(MIMEText(body, "plain"))
+
+    msg.attach(MIMEText(body_text, "html"))
+
+    for filename, data in attachments.items():
+        part = MIMEApplication(data, Name=filename)
+        part['Content-Disposition'] = f'attachment; filename="{filename}"'
+        msg.attach(part)
+
     try:
         with smtplib.SMTP("smtp.gmail.com", 587) as server:
             server.starttls()
-            server.login(sender, password)
+            server.login(VA_EMAIL, VA_EMAIL_PASS)
             server.send_message(msg)
-        logging.info("📧 Daily report email sent successfully.")
+        logging.info("📧 Email with attachments sent successfully.")
     except Exception as e:
-        logging.error(f"❌ Failed to send email: {e}")
+        logging.exception("Failed to send email")
+        raise
 
 
-# Run every day at 10:00 AM IST
-schedule.every().day.at("10:00").do(send_daily_email)
+# ---- The "actual work" to perform once approval or auto-resume occurs ----
+def perform_daily_tasks(report_date_str):
+    # Put the real JRAVIS actions here: update DB, kick workflows, mark tasks done, etc.
+    logging.info(f"Performing daily tasks for date {report_date_str} ...")
+    # EXAMPLE: pretend to update logs
+    time.sleep(1)
+    logging.info("Daily tasks completed.")
+
+
+# ---- Orchestrator that sends the email and waits for approval ----
+def orchestrate_and_wait_for_approval(report_date_str, lock_code):
+    # 1) build temp PDFs (summary and invoice)
+    with tempfile.TemporaryDirectory() as td:
+        summary_plain = os.path.join(td, "summary_plain.pdf")
+        summary_encrypted = os.path.join(td, "summary_encrypted.pdf")
+        invoice_pdf = os.path.join(td, "invoice.pdf")
+
+        # Example content - adapt to your real data pulls
+        summary_lines = [
+            f"Date: {report_date_str}", "What VA Bot did yesterday: ...",
+            "What VA Bot will do today: ...",
+            "What VA Bot will do tomorrow: ...",
+            "Today's scheduled tasks: ...", "Status of yesterday's tasks: ...",
+            "Areas team is working on: ...", "Issues / progress updates: ...",
+            "Total earnings so far: ₹X (distance to target: ₹Y)", "",
+            "This Summary PDF is locked with your lock code."
+        ]
+        invoice_lines = [
+            f"Invoice Date: {report_date_str}", "Invoice details: ...",
+            "Total: ₹XXXXX"
+        ]
+
+        create_simple_pdf(summary_lines, summary_plain)
+        create_simple_pdf(invoice_lines, invoice_pdf)
+
+        # Encrypt summary
+        encrypt_pdf(summary_plain, summary_encrypted, lock_code)
+
+        # Read files into memory for sending
+        with open(summary_encrypted, "rb") as f:
+            summary_bytes = f.read()
+        with open(invoice_pdf, "rb") as f:
+            invoice_bytes = f.read()
+
+        # 2) create approval token + link
+        token = str(uuid.uuid4())
+        approve_link = f"{os.getenv('BASE_URL','https://jravis-backend.onrender.com')}/api/approve?token={token}"
+
+        # Save token state
+        expiry = datetime.utcnow() + timedelta(minutes=10)
+        with approval_lock:
+            approval_tokens[token] = {
+                "approved": False,
+                "expiry": expiry,
+                "created_at": datetime.utcnow(),
+            }
+
+        # 3) send email (HTML) with attachments and approval link button
+        subject = f"✅ JRAVIS Daily Report — {report_date_str}"
+        body_html = f"""
+        <p>Boss, VA BOT has completed today’s scheduled tasks successfully.</p>
+        <p><b>Summary PDF:</b> Encrypted with your lock code.</p>
+        <p><b>Invoice PDF:</b> Attached (no lock).</p>
+        <p>
+          <a href="{approve_link}" style="display:inline-block;padding:10px 16px;
+             background:#0b74de;color:#fff;text-decoration:none;border-radius:6px;">
+             Approve Now
+          </a>
+        </p>
+        <p>If you do not click approve within 10 minutes, VA BOT will auto-resume work.</p>
+        """
+
+        attachments = {
+            f"{report_date_str} summary.pdf": summary_bytes,
+            f"{report_date_str} invoices.pdf": invoice_bytes,
+        }
+
+        send_email_with_attachments(subject, body_html, attachments)
+        logging.info(
+            f"Approval email sent with token {token}. Waiting up to 10 minutes."
+        )
+
+        # 4) Wait (poll) up to 10 minutes for approval; if approved -> perform tasks immediately.
+        waited = 0
+        approved = False
+        while waited < 600:  # 600 seconds = 10 minutes
+            with approval_lock:
+                token_state = approval_tokens.get(token)
+                if token_state and token_state.get("approved"):
+                    approved = True
+                    break
+            time.sleep(3)
+            waited += 3
+
+        # After wait:
+        if approved:
+            logging.info("Approval received. Proceeding with daily tasks.")
+            perform_daily_tasks(report_date_str)
+        else:
+            logging.info(
+                "No approval within 10 minutes. Auto-resuming daily tasks.")
+            perform_daily_tasks(report_date_str)
+
+        # cleanup token
+        with approval_lock:
+            approval_tokens.pop(token, None)
+
+
+# ---- Endpoint to trigger daily report (same as your curl) ----
+@app.get("/api/send_daily_report")
+def send_daily_report(code: str = Query(..., description="simple auth code")):
+    if code != ADMIN_CODE:
+        raise HTTPException(status_code=401, detail="Invalid code")
+
+    report_date_str = datetime.now().strftime("%d-%m-%Y")
+    # Run orchestrator in background thread so endpoint returns right away
+    thread = threading.Thread(target=orchestrate_and_wait_for_approval,
+                              args=(report_date_str, LOCK_CODE),
+                              daemon=True)
+    thread.start()
+    return JSONResponse({
+        "detail": "Daily report email sent (orchestrator started).",
+        "date": report_date_str
+    })
+
+
+# ---- Endpoint called by email approval link ----
+@app.get("/api/approve")
+def approve(token: str = Query(...)):
+    with approval_lock:
+        token_state = approval_tokens.get(token)
+        if not token_state:
+            return JSONResponse({"detail": "Invalid or expired token."},
+                                status_code=404)
+        token_state["approved"] = True
+    return JSONResponse(
+        {"detail": "Approval recorded. VA BOT will proceed immediately."})
+
+
+import schedule
+import threading
+import time
+import requests
+
+
+# ---- Trigger function that calls our own API every morning ----
+def trigger_daily_report():
+    try:
+        # call the same backend API (self-call)
+        url = f"https://jravis-backend.onrender.com/api/send_daily_report?code={os.getenv('REPORT_API_CODE','2040')}"
+        r = requests.get(url, timeout=20)
+        logging.info(
+            f"[Scheduler] Triggered daily report: {r.status_code} {r.text}")
+    except Exception as e:
+        logging.error(f"[Scheduler] Failed to trigger daily report: {e}")
+
+
+# ---- Schedule job at 10:00 AM IST ----
+schedule.every().day.at("10:00").do(trigger_daily_report)
 
 
 def scheduler_loop():
@@ -759,6 +996,7 @@ def scheduler_loop():
         time.sleep(60)
 
 
+# ---- Run scheduler in background ----
 threading.Thread(target=scheduler_loop, daemon=True).start()
 
 

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import LockScreen from "@/components/LockScreen";
+import LockScreen from "/components/LockScreen";
 import LiveFeedPanel from "@/components/LiveFeedPanel";
 import { motion, AnimatePresence } from "framer-motion";
 

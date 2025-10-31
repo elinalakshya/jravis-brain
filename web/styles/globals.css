@@ -1,0 +1,16 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-black text-gray-200 min-h-screen;
+  font-family: 'Inter', sans-serif;
+}
+
+h1, h2, h3, h4 {
+  @apply font-bold text-white;
+}
+
+.card {
+  @apply bg-gray-900/70 backdrop-blur-md border border-gray-700 rounded-2xl p-4 shadow-md;
+}

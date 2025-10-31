@@ -1,67 +1,69 @@
 import React, { useState } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 
 export default function LockScreen({ onUnlock }) {
-  const [code, setCode] = useState("");
-  const [error, setError] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState(false);
 
-  const correctCode = "YOUR_LOCK_CODE"; // change this to your actual lock code
-
-  const handleLogin = () => {
-    if (code === correctCode) {
-      setError("");
-      onUnlock();
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (password === "2040") {
+      setError(false);
+      setTimeout(() => onUnlock(), 500);
     } else {
-      setError("Access Denied – Incorrect Code");
+      setError(true);
+      setPassword("");
     }
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 1 }}
-      className="h-screen flex items-center justify-center bg-gradient-to-br from-black via-gray-900 to-black text-white"
-    >
+    <AnimatePresence>
       <motion.div
-        initial={{ scale: 0.95, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ duration: 0.8 }}
-        className="p-8 rounded-3xl bg-gray-900/80 backdrop-blur-xl border border-blue-800 shadow-[0_0_30px_rgba(0,150,255,0.2)] w-80 text-center"
+        className="fixed inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-gray-900 via-black to-gray-800 text-white"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 1 }}
       >
-        <h2 className="text-2xl font-bold mb-4 text-blue-400 tracking-widest uppercase">
-          JRAVIS Secure Access
-        </h2>
-
-        <input
-          type="password"
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
-          className="w-full p-3 rounded-lg bg-gray-800 text-white border border-gray-700 text-center mb-3 focus:ring-2 focus:ring-blue-600 outline-none"
-          placeholder="Enter Lock Code"
-        />
-
-        <button
-          onClick={handleLogin}
-          className="w-full py-3 mt-2 bg-blue-600 hover:bg-blue-500 rounded-lg font-semibold transition-all duration-200"
+        <motion.div
+          className="text-center"
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ duration: 1 }}
         >
-          Authenticate
-        </button>
-
-        {error && (
-          <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="mt-3 text-red-400 text-sm"
-          >
-            {error}
-          </motion.p>
-        )}
-
-        <p className="mt-5 text-xs text-gray-500 tracking-widest">
-          MILITARY-GRADE ENCRYPTION MODE
-        </p>
+          <h1 className="text-4xl font-bold tracking-widest mb-6 text-cyan-400">
+            JRAVIS SECURE ACCESS
+          </h1>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <input
+              type="password"
+              value={password}
+              placeholder="Enter Access Code"
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-72 px-4 py-2 text-center bg-gray-800 border border-cyan-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-400"
+            />
+            {error && (
+              <p className="text-red-400 text-sm animate-pulse">
+                Invalid Code — Access Denied
+              </p>
+            )}
+            <button
+              type="submit"
+              className="w-72 py-2 bg-cyan-500 hover:bg-cyan-400 rounded-lg font-semibold text-gray-900 transition-all duration-300"
+            >
+              UNLOCK
+            </button>
+          </form>
+        </motion.div>
+        <motion.p
+          className="absolute bottom-8 text-sm text-gray-400 tracking-widest"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1.5, duration: 1 }}
+        >
+          SYSTEM ENCRYPTION ACTIVE • MIL-GRADE LOCK
+        </motion.p>
       </motion.div>
-    </motion.div>
+    </AnimatePresence>
   );
 }

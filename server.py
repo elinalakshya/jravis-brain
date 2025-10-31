@@ -138,3 +138,44 @@ async def chat_endpoint(req: Request):
         "Boss, I understood: '" + data.get("text", "") +
         "'. Ask me about Phase 1/Phase 2/Phase 3, totals, or top streams."
     })
+
+
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+import subprocess
+import os
+
+app = FastAPI()
+
+# Existing routes above this...
+
+
+@app.get("/api/send_daily_report")
+async def send_daily_report(request: Request):
+    """Trigger daily report email with lock code verification"""
+    params = dict(request.query_params)
+    code = params.get("code", "")
+
+    # ✅ Security check — must match your lock code
+    if code != "2040":
+        return JSONResponse({
+            "status": "error",
+            "message": "Unauthorized"
+        },
+                            status_code=401)
+
+    try:
+        # Run the email sender script
+        subprocess.run(["python", "auto_dashboard_daily.py"],
+                       cwd=os.getcwd(),
+                       check=True)
+        return JSONResponse({
+            "status": "success",
+            "message": "Daily report sent successfully"
+        })
+    except Exception as e:
+        return JSONResponse({
+            "status": "error",
+            "message": str(e)
+        },
+                            status_code=500)

@@ -26,3 +26,6 @@ button {
   background: #00ff88;
   border-radius: 10px;
 }
+
+@import "@fontsource/orbitron";
+@import "@fontsource/exo-2";
