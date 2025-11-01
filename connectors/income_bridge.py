@@ -38,6 +38,9 @@ PRINTIFY_BASE = "https://api.printify.com/v1"
 
 # TinyDB path (persisted inside container)
 DB_PATH = os.getenv("JRAVIS_INCOME_DB", "/app/data/income_db.json")
+
+# Ensure folder exists before creating TinyDB file
+os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 db = TinyDB(DB_PATH)
 
 
