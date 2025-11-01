@@ -1,40 +1,92 @@
-# daily_trigger.py
-import threading, time, requests, schedule, os
-
-URL = "https://jravis-backend.onrender.com/api/send_daily_report?code=2040"
-
-
-def call_report():
-    try:
-        r = requests.get(URL, timeout=30)
-        print(f"[Scheduler] Triggered daily report: {r.status_code}")
-    except Exception as e:
-        print(f"[Scheduler] ERROR: {e}")
-
-
-def scheduler_loop():
-    schedule.every().day.at("10:00").do(call_report)  # 10 AM IST
-    while True:
-        schedule.run_pending()
-        time.sleep(60)
-
-
-def start_daily_scheduler():
-    t = threading.Thread(target=scheduler_loop, daemon=True)
-    t.start()
-
-
-from daily_trigger import start_daily_scheduler
-
-start_daily_scheduler()
-
-# near top of server.py (imports)
+# ===============================================================
+# JRAVIS Backend Server  (Phase 2 — Stable Build v2.1)
+# ===============================================================
+import os
+import logging
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+from datetime import datetime
 from connectors.income_bridge import run_daily as run_income_bridge
 
-# inside orchestrate_report(), before creating summary lines:
-try:
-    LOG.info("Running income bridge before building report...")
-    matched = run_income_bridge()
-    LOG.info("Income bridge matched %d payments", matched)
-except Exception as e:
-    LOG.error("Income bridge failed: %s", e)
+# ---------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------
+logging.basicConfig(level=logging.INFO,
+                    format="%(asctime)s [%(levelname)s] %(message)s",
+                    handlers=[logging.StreamHandler()])
+LOG = logging.getLogger("jravis-server")
+
+# ---------------------------------------------------------------
+# FastAPI app
+# ---------------------------------------------------------------
+app = FastAPI(title="JRAVIS Backend",
+              version="2.1",
+              description="JRAVIS Passive-Income Backend — Mission 2040")
+
+
+# Health-check endpoint (used by Render)
+@app.get("/healthz")
+async def healthz():
+    return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
+
+
+# ---------------------------------------------------------------
+# Internal helper
+# ---------------------------------------------------------------
+def orchestrate_report(report_type="daily"):
+    """Main orchestrator for daily / weekly report + income bridge."""
+    LOG.info("=== JRAVIS Report Orchestrator START (%s) ===", report_type)
+    date_tag = datetime.utcnow().strftime("%d-%m-%Y")
+
+    # 1️⃣ Run Income Bridge
+    try:
+        LOG.info("[IncomeBridge] Starting…")
+        matched = run_income_bridge()
+        LOG.info("[IncomeBridge] Matched %d transactions ✅", matched)
+    except Exception as e:
+        LOG.error("[IncomeBridge] Failed: %s", e)
+
+    # 2️⃣ Placeholder for PDF + email logic (already handled by cron/emailer)
+    report_path = f"/app/data/reports/{date_tag}-{report_type}.pdf"
+    os.makedirs(os.path.dirname(report_path), exist_ok=True)
+    with open(report_path, "w") as f:
+        f.write(f"JRAVIS {report_type.capitalize()} Report — {date_tag}\n")
+        f.write("Generated successfully ✅\n")
+
+    LOG.info("=== JRAVIS Report Orchestrator END (%s) ===", report_type)
+    return {
+        "detail": f"{report_type.capitalize()} report orchestrator started",
+        "date": date_tag
+    }
+
+
+# ---------------------------------------------------------------
+# API Endpoints (used by Render Cron)
+# ---------------------------------------------------------------
+@app.get("/api/send_daily_report")
+async def send_daily_report(code: str):
+    """Trigger daily report via secure code."""
+    if code != "2040":
+        return JSONResponse({"error": "Unauthorized"}, status_code=403)
+    res = orchestrate_report("daily")
+    return JSONResponse(res)
+
+
+@app.get("/api/send_weekly_report")
+async def send_weekly_report(code: str):
+    """Trigger weekly report via secure code."""
+    if code != "2040":
+        return JSONResponse({"error": "Unauthorized"}, status_code=403)
+    res = orchestrate_report("weekly")
+    return JSONResponse(res)
+
+
+# ---------------------------------------------------------------
+# Optional manual trigger (for local testing)
+# ---------------------------------------------------------------
+if __name__ == "__main__":
+    import uvicorn
+    LOG.info("Starting JRAVIS Backend — Mission 2040")
+    uvicorn.run("server:app",
+                host="0.0.0.0",
+                port=int(os.getenv("PORT", 8000)))
