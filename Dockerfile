@@ -41,14 +41,13 @@ EXPOSE 8080
 
 CMD ["gunicorn", "jravis_brain:app", "--bind", "0.0.0.0:8080", "--timeout", "120"]
 
-
 # ---------- Base Stage ----------
 FROM node:18-alpine AS base
 WORKDIR /app
 COPY package*.json ./
 
-# Install dependencies (only production needed)
-RUN npm ci
+# Install dependencies (using npm install instead of npm ci)
+RUN npm install
 
 # ---------- Build Stage ----------
 FROM base AS build
@@ -65,10 +64,10 @@ COPY --from=build /app/.next ./.next
 COPY --from=build /app/public ./public
 COPY --from=build /app/package*.json ./
 
-# Install only production deps
-RUN npm ci --omit=dev
+# Install only production dependencies
+RUN npm install --omit=dev
 
-# Set environment (Render automatically injects PORT)
+# Set environment variables
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
