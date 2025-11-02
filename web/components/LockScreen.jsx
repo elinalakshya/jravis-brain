@@ -1,110 +1,45 @@
-import { useEffect, useState } from "react";
-import CryptoJS from "crypto-js";
+import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-
-/*
-  Seed the hashed code in the browser console once:
-  localStorage.setItem("jravis_lock_hash", CryptoJS.SHA256("YOUR_CODE").toString());
-*/
-
-const LOCK_KEY = "jravis_lock_hash";
-const UNLOCKED_FLAG = "jravis_unlocked_flag";
-
-const verifyCode = (code) => {
-  const stored = localStorage.getItem(LOCK_KEY);
-  if (!stored) return false;
-  return CryptoJS.SHA256(code).toString() === stored;
-};
 
 export default function LockScreen({ onUnlock }) {
   const [code, setCode] = useState("");
-  const [err, setErr] = useState("");
-  const [animUnlock, setAnimUnlock] = useState(false);
+  const [error, setError] = useState(false);
+  const correctCode = process.env.NEXT_PUBLIC_LOCK_CODE || "2040";
 
-  useEffect(() => {
-    if (localStorage.getItem(UNLOCKED_FLAG) === "1") onUnlock();
-  }, []);
-
-  const tryUnlock = () => {
-    if (verifyCode(code)) {
-      setErr("");
-      setAnimUnlock(true);
-      localStorage.setItem(UNLOCKED_FLAG, "1");
-      setTimeout(() => onUnlock(), 900);
-    } else {
-      setErr("Incorrect code");
-      setCode("");
-      // small shake
-      const el = document.getElementById("lock-card");
-      if (el) {
-        el.animate(
-          [
-            { transform: "translateX(-6px)" },
-            { transform: "translateX(6px)" },
-            { transform: "translateX(0)" },
-          ],
-          { duration: 400 },
-        );
-      }
+  const handleUnlock = () => {
+    if (code === correctCode) onUnlock?.();
+    else {
+      setError(true);
+      setTimeout(() => setError(false), 1200);
     }
   };
 
   return (
-    <div className="h-screen flex items-center justify-center bg-black">
-      <AnimatePresence>
-        {!animUnlock ? (
-          <motion.div
-            id="lock-card"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            className="w-full max-w-md p-6 bg-[#0b0d11] border border-[#111215] rounded-2xl shadow-2xl text-center"
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 1 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 flex flex-col items-center justify-center bg-black text-white z-50"
+      >
+        <div className="p-8 bg-white/10 rounded-xl border border-white/20 text-center">
+          <h2 className="text-xl font-semibold mb-3">JRAVIS Console Locked</h2>
+          <input
+            type="password"
+            placeholder="Enter Lock Code"
+            className="w-full p-2 text-center rounded bg-white/20 mb-3"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+          />
+          <button
+            onClick={handleUnlock}
+            className="px-4 py-2 bg-cyan-600 rounded-lg hover:bg-cyan-500"
           >
-            <div className="mb-4">
-              <div className="text-3xl font-extrabold text-[#00e5ff]">
-                JRAVIS LOCK
-              </div>
-              <div className="text-xs text-gray-400 mt-1">
-                Enter daily report lock code to continue
-              </div>
-            </div>
-
-            <input
-              type="password"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && tryUnlock()}
-              placeholder="Enter Lock Code"
-              className="w-full p-3 rounded-lg bg-[#07080a] border border-[#151619] text-white mb-3 focus:ring-2 focus:ring-[#00e5ff]/30"
-            />
-
-            <button
-              onClick={tryUnlock}
-              className="w-full py-2 rounded-lg bg-gradient-to-r from-[#00bcd4] to-[#00e5ff] text-black font-semibold"
-            >
-              UNLOCK
-            </button>
-            {err && <div className="mt-3 text-red-400 text-sm">{err}</div>}
-
-            <div className="mt-5 text-xs text-gray-500">
-              JRAVIS — secure local unlock. No code leaves your browser.
-            </div>
-          </motion.div>
-        ) : (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="text-center"
-          >
-            <h2 className="text-3xl font-bold text-[#00e5ff]">
-              Welcome back, Boss
-            </h2>
-            <p className="mt-2 text-gray-400">
-              JRAVIS systems online — loading dashboard…
-            </p>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+            Unlock
+          </button>
+          {error && <p className="text-red-400 mt-2">Invalid code</p>}
+        </div>
+      </motion.div>
+    </AnimatePresence>
   );
 }

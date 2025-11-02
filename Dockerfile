@@ -41,3 +41,39 @@ EXPOSE 8080
 
 CMD ["gunicorn", "jravis_brain:app", "--bind", "0.0.0.0:8080", "--timeout", "120"]
 
+
+# ---------- Base Stage ----------
+FROM node:18-alpine AS base
+WORKDIR /app
+COPY package*.json ./
+
+# Install dependencies (only production needed)
+RUN npm ci
+
+# ---------- Build Stage ----------
+FROM base AS build
+WORKDIR /app
+COPY . .
+RUN npm run build
+
+# ---------- Production Stage ----------
+FROM node:18-alpine AS production
+WORKDIR /app
+
+# Copy only the built output from build stage
+COPY --from=build /app/.next ./.next
+COPY --from=build /app/public ./public
+COPY --from=build /app/package*.json ./
+
+# Install only production deps
+RUN npm ci --omit=dev
+
+# Set environment (Render automatically injects PORT)
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Expose the Render port
+EXPOSE 8000
+
+# Start the dashboard
+CMD ["npm", "run", "start"]

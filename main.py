@@ -968,38 +968,6 @@ def approve(token: str = Query(...)):
         {"detail": "Approval recorded. VA BOT will proceed immediately."})
 
 
-import schedule
-import threading
-import time
-import requests
-
-
-# ---- Trigger function that calls our own API every morning ----
-def trigger_daily_report():
-    try:
-        # call the same backend API (self-call)
-        url = f"https://jravis-backend.onrender.com/api/send_daily_report?code={os.getenv('REPORT_API_CODE','2040')}"
-        r = requests.get(url, timeout=20)
-        logging.info(
-            f"[Scheduler] Triggered daily report: {r.status_code} {r.text}")
-    except Exception as e:
-        logging.error(f"[Scheduler] Failed to trigger daily report: {e}")
-
-
-# ---- Schedule job at 10:00 AM IST ----
-schedule.every().day.at("10:00").do(trigger_daily_report)
-
-
-def scheduler_loop():
-    while True:
-        schedule.run_pending()
-        time.sleep(60)
-
-
-# ---- Run scheduler in background ----
-threading.Thread(target=scheduler_loop, daemon=True).start()
-
-
 # -----------------------
 # Auto-kill old same-name processes (if psutil available)
 # -----------------------
@@ -1179,3 +1147,34 @@ import os
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
+
+import schedule
+import threading
+import time
+import requests
+import logging
+import os
+
+
+def trigger_daily_report():
+    try:
+        url = f"https://jravis-backend.onrender.com/api/send_daily_report?code={os.getenv('REPORT_API_CODE', '2040')}"
+        r = requests.get(url, timeout=30)
+        logging.info(
+            f"[Scheduler] Triggered daily report — {r.status_code} {r.text}")
+    except Exception as e:
+        logging.error(f"[Scheduler] Failed to trigger daily report: {e}")
+
+
+# Schedule daily at 10:00 AM IST
+schedule.every().day.at("10:00").do(trigger_daily_report)
+
+
+def scheduler_loop():
+    while True:
+        schedule.run_pending()
+        time.sleep(60)
+
+
+# Start background thread
+threading.Thread(target=scheduler_loop, daemon=True).start()
