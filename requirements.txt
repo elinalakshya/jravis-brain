@@ -64,3 +64,12 @@ PyPDF2
 requests
 schedule
 tinydb
+
+fastapi
+uvicorn
+requests
+tinydb
+schedule
+pydantic
+jinja2
+python-dotenv
