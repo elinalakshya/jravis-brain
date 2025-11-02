@@ -76,3 +76,4 @@ EXPOSE 8000
 
 # Start the dashboard
 CMD ["npm", "run", "start"]
+
