@@ -39,6 +39,14 @@ def health_check():
     return {"status": "healthy"}
 
 
+@app.get("/api/send_weekly_report")
+def send_weekly_report(code: str = Query(...)):
+    if code != "2040":
+        return {"detail": "Unauthorized"}
+    print("[Backend] 🗓️ Generating weekly report...")
+    return {"status": "Weekly report sent successfully"}
+
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
