@@ -73,3 +73,7 @@ schedule
 pydantic
 jinja2
 python-dotenv
+
+fastapi==0.115.0
+uvicorn==0.30.1
+
