@@ -1178,3 +1178,45 @@ def scheduler_loop():
 
 # Start background thread
 threading.Thread(target=scheduler_loop, daemon=True).start()
+
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+import uvicorn
+
+app = FastAPI(title="JRAVIS Brain API")
+
+# Allow all origins (dashboard, workers, backend)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# --- Health Check ---
+@app.get("/healthz")
+async def health_check():
+    return {"status": "ok"}
+
+# --- Intelligence Worker Ping ---
+@app.get("/ping")
+async def ping():
+    return {"message": "JRAVIS Brain Online"}
+
+# --- Add endpoints as needed ---
+@app.post("/events")
+async def events_handler(event: dict):
+    print("Received Event:", event)
+    return {"status": "received"}
+
+@app.post("/task-update")
+async def task_update(payload: dict):
+    print("Task Update:", payload)
+    return {"status": "updated"}
+
+if __name__ == "__main__":
+    import os
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
+
