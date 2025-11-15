@@ -1220,3 +1220,35 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
 
+    from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+import subprocess
+
+app = FastAPI()
+
+@app.get("/")
+def root():
+    return {"status": "JRAVIS Backend running", "version": "1.0"}
+
+# ✅ Daily Report API
+@app.get("/send_daily_report")
+def send_daily_report():
+    try:
+        print("📅 Daily report triggered by cron...")
+        # Call your daily report script here
+        subprocess.run(["python3", "report_daily.py"], check=True)
+        return {"message": "Daily report triggered"}
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+# ✅ Weekly Report API
+@app.get("/send_weekly_report")
+def send_weekly_report():
+    try:
+        print("📅 Weekly report triggered by cron...")
+        # Call your weekly report script here
+        subprocess.run(["python3", "report_weekly.py"], check=True)
+        return {"message": "Weekly report triggered"}
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
