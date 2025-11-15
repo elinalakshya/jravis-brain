@@ -19,7 +19,11 @@ def send_daily_report(code: str):
         raise HTTPException(status_code=401, detail="Invalid code")
 
     date_str = datetime.now().strftime("%d-%m-%Y")
-    threading.Thread(target=orchestrate_daily, args=(date_str,), daemon=True).start()
+    threading.Thread(
+        target=orchestrate_daily,
+        args=(date_str,),
+        daemon=True
+    ).start()
 
     return {"detail": "Daily report email sent", "date": date_str}
 
@@ -28,7 +32,10 @@ def send_weekly_report(code: str):
     if code != ADMIN_CODE:
         raise HTTPException(status_code=401, detail="Invalid code")
 
-    threading.Thread(target=orchestrate_weekly, daemon=True).start()
+    threading.Thread(
+        target=orchestrate_weekly,
+        daemon=True
+    ).start()
 
     return {"detail": "Weekly report email sent"}
 
