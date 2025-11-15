@@ -1,101 +1,134 @@
-#!/usr/bin/env python3
 import os
-import sys
+import time
+import uuid
+import threading
+import tempfile
+from datetime import datetime, timedelta
+from typing import Dict
+
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
+from PyPDF2 import PdfReader, PdfWriter
+
 import smtplib
-import base64
-from email.mime.multipart import MIMEMultipart
-from email.mime.application import MIMEApplication
 from email.mime.text import MIMEText
-from datetime import datetime
+from email.mime.application import MIMEApplication
+from email.mime.multipart import MIMEMultipart
 
-from reports.utils_pdf import make_summary_pdf, make_invoice_pdf, encrypt_pdf
+LOCK_CODE = os.getenv("LOCK_CODE", "2040")
+VA_EMAIL = os.getenv("VA_EMAIL")
+VA_EMAIL_PASS = os.getenv("VA_EMAIL_PASS")
+RECIPIENT = os.getenv("REPORT_RECIPIENT", "nrveeresh327@gmail.com")
 
-MODE = sys.argv[1] if len(sys.argv) > 1 else "daily"
+approval_tokens: Dict[str, Dict] = {}
+approval_lock = threading.Lock()
 
-EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
-EMAIL_PORT = int(os.getenv("EMAIL_PORT", 587))
-EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
-EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
-REPORT_TO_EMAIL = os.getenv("REPORT_TO_EMAIL")
-LOCK_CODE = os.getenv("LOCK_CODE", "1234")
-APP_BASE = os.getenv("APP_BASE", "")
+def create_pdf(lines, path):
+    c = canvas.Canvas(path, pagesize=A4)
+    width, height = A4
+    y = height - 72
+    c.setFont("Helvetica", 12)
+    for line in lines:
+        c.drawString(72, y, line)
+        y -= 18
+        if y < 72:
+            c.showPage()
+            y = height - 72
+    c.save()
 
+def encrypt_pdf(src, dest, pwd):
+    reader = PdfReader(src)
+    writer = PdfWriter()
+    for p in reader.pages:
+        writer.add_page(p)
+    writer.encrypt(pwd)
+    with open(dest, "wb") as f:
+        writer.write(f)
 
-def collect_data(mode):
-    now = datetime.utcnow().isoformat()
-    summary = {
-        "mode": mode,
-        "generated_at_utc": now,
-        "yesterday_done": "Auto-inspection cycles: 12",
-        "today_plan": "Run Phase-1 tests",
-        "tomorrow_plan": "Start Phase-2 rollout",
-        "total_earnings_so_far": "₹1,23,456"
-    }
-
-    invoices = [{
-        "id": "INV-01",
-        "amount": "₹12,000"
-    }, {
-        "id": "INV-02",
-        "amount": "₹8,000"
-    }]
-
-    return summary, invoices
-
-
-def send_email(mode, summary_pdf, invoice_pdf):
+def send_email(subject, html_body, attachments):
     msg = MIMEMultipart()
-    msg["From"] = EMAIL_HOST_USER
-    msg["To"] = REPORT_TO_EMAIL
-    msg["Subject"] = f"JRAVIS {mode.capitalize()} Report - {datetime.utcnow().date().isoformat()}"
+    msg["From"] = f"JRAVIS BOT <{VA_EMAIL}>"
+    msg["To"] = RECIPIENT
+    msg["Subject"] = subject
 
-    approval_link = f"{APP_BASE}/approve?mode={mode}&date={datetime.utcnow().date()}"
+    msg.attach(MIMEText(html_body, "html"))
 
-    msg.attach(
-        MIMEText(
-            f"""
-        <p>Hello Boss,</p>
-        <p>Your {mode} report is attached.</p>
-        <p><a href="{approval_link}">Click here to approve</a></p>
-        <p>Summary PDF is lock protected.</p>
-        <p>— JRAVIS</p>
-        """, "html"))
+    for filename, data in attachments.items():
+        part = MIMEApplication(data, Name=filename)
+        part['Content-Disposition'] = f'attachment; filename="{filename}"'
+        msg.attach(part)
 
-    # Attach encrypted summary PDF
-    part_sum = MIMEApplication(summary_pdf, Name="summary.pdf")
-    part_sum['Content-Disposition'] = 'attachment; filename="summary.pdf"'
-    msg.attach(part_sum)
+    with smtplib.SMTP("smtp.gmail.com", 587) as s:
+        s.starttls()
+        s.login(VA_EMAIL, VA_EMAIL_PASS)
+        s.send_message(msg)
 
-    # Attach invoice PDF
-    part_inv = MIMEApplication(invoice_pdf, Name="invoices.pdf")
-    part_inv['Content-Disposition'] = 'attachment; filename="invoices.pdf"'
-    msg.attach(part_inv)
+def perform_real_tasks(date):
+    time.sleep(1)
 
-    # Send through Gmail
-    try:
-        server = smtplib.SMTP(EMAIL_HOST, EMAIL_PORT)
-        server.starttls()
-        server.login(EMAIL_HOST_USER, EMAIL_HOST_PASSWORD)
-        server.send_message(msg)
-        server.quit()
-        print("Email sent successfully!")
-        return True
-    except Exception as e:
-        print("Email sending FAILED:", e)
-        return False
+def orchestrate_daily(date_str):
+    with tempfile.TemporaryDirectory() as td:
+        plain = f"{td}/summary_plain.pdf"
+        encrypted = f"{td}/summary.pdf"
+        invoice = f"{td}/invoice.pdf"
 
+        summary_lines = [
+            f"Daily Report for {date_str}",
+            "Yesterday's tasks: ...",
+            "Today's plan: ...",
+            "Tomorrow's plan: ...",
+            "Total earnings: ₹XXXXX",
+        ]
 
-if __name__ == "__main__":
-    summary, invoices = collect_data(MODE)
+        invoice_lines = [
+            "Invoice Details",
+            "Amount: ₹XXXX",
+            f"Date: {date_str}"
+        ]
 
-    # Build PDFs
-    summary_pdf_raw = make_summary_pdf(summary)
-    encrypted_summary = encrypt_pdf(summary_pdf_raw, LOCK_CODE)
-    invoice_pdf = make_invoice_pdf(invoices)
+        create_pdf(summary_lines, plain)
+        create_pdf(invoice_lines, invoice)
+        encrypt_pdf(plain, encrypted, LOCK_CODE)
 
-    ok = send_email(MODE, encrypted_summary, invoice_pdf)
+        with open(encrypted, "rb") as f:
+            summary_bytes = f.read()
+        with open(invoice, "rb") as f:
+            invoice_bytes = f.read()
 
-    if not ok:
-        sys.exit(1)
+        token = str(uuid.uuid4())
+        link = f"{os.getenv('BASE_URL','https://jravis-backend.onrender.com')}/api/approve?token={token}"
 
-    print("Report done.")
+        with approval_lock:
+            approval_tokens[token] = {
+                "approved": False,
+                "expiry": datetime.utcnow() + timedelta(minutes=10)
+            }
+
+        body = f"""
+        <p>Boss, here is your daily report ({date_str}).</p>
+        <p><a href="{link}" style="padding:8px 14px;background:#007bff;color:#fff;text-decoration:none;border-radius:6px;">Approve Now</a></p>
+        """
+
+        send_email(f"JRAVIS Daily Report — {date_str}", body, {
+            f"{date_str} summary.pdf": summary_bytes,
+            f"{date_str} invoice.pdf": invoice_bytes
+        })
+
+        waited = 0
+        approved = False
+        while waited < 600:
+            with approval_lock:
+                if approval_tokens[token]["approved"]:
+                    approved = True
+                    break
+            time.sleep(3)
+            waited += 3
+
+        perform_real_tasks(date_str)
+
+        with approval_lock:
+            approval_tokens.pop(token, None)
+
+def orchestrate_weekly():
+    body = "Weekly report sent"
+    send_email("JRAVIS Weekly Report", body, {})
