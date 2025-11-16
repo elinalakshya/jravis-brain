@@ -1,9 +1,8 @@
-# render.yaml (root of repo)
-
 services:
   - type: web
     name: jravis-backend
     runtime: docker
+    repo: https://github.com/elinalakshya/jravis-brain
     rootDir: jravis-backend
     dockerfilePath: jravis-backend/Dockerfile
     dockerContext: jravis-backend
