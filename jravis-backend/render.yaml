@@ -1,0 +1,25 @@
+# Exported from Render (corrected)
+version: "1"
+services:
+  - type: web
+    name: jravis-backend
+    runtime: docker
+    repo: https://github.com/elinalakshya/jravis-brain
+    plan: starter
+    region: oregon
+    rootDir: jravis-backend
+    dockerContext: .
+    dockerfilePath: jravis-backend/Dockerfile
+    autoDeployTrigger: commit
+    envVars:
+      - key: REPORT_API_CODE
+        sync: false
+      - key: LOCK_CODE
+        sync: false
+      - key: VA_EMAIL
+        sync: false
+      - key: VA_EMAIL_PASS
+        sync: false
+      - key: REPORT_RECIPIENT
+        sync: false
+      # add others if needed
