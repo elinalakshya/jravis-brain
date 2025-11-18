@@ -278,23 +278,27 @@ def send_internal_email(subject, body, attachments=None):
     if not VA_EMAIL or not VA_EMAIL_PASS:
         logging.warning("Email not sent (missing VA_EMAIL / VA_EMAIL_PASS)")
         return False
+
     try:
         msg = MIMEMultipart()
         msg["From"] = VA_EMAIL
         msg["To"] = INVOICE_EMAIL
         msg["Subject"] = subject
         msg.attach(MIMEText(body, "plain"))
+
         if attachments:
             for p in attachments:
                 try:
                     with open(p, "rb") as fh:
                         part = MIMEApplication(fh.read(),
                                                Name=os.path.basename(p))
-                    part[
-                        "Content-Disposition"] = f'attachment; filename="{os.path.basename(p)}"'
+                    part["Content-Disposition"] = (
+                        f'attachment; filename="{os.path.basename(p)}"'
+                    )
                     msg.attach(part)
                 except Exception as e:
                     logging.warning("attach error %s: %s", p, e)
+
         with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as s:
             s.login(VA_EMAIL, VA_EMAIL_PASS)
             s.sendmail(VA_EMAIL, [INVOICE_EMAIL], msg.as_string())
@@ -304,6 +308,71 @@ def send_internal_email(subject, body, attachments=None):
         logging.error("Email send failed: %s", e)
         return False
 
+# -----------------------
+# PHASE 1 STAGGERED ACTIVATION
+# -----------------------
+PHASE1_SEQUENCE = [
+    "Elina Instagram Reels",
+    "Printify POD Store",
+    "Meshy AI Store",
+    "Cad Crowd Auto Work",
+    "Fiverr AI Gig Automation",
+    "YouTube Automation",
+    "Stock Image/Video Sales",
+    "AI Book Publishing (KDP)",
+    "Shopify Digital Products",
+    "Stationery Export (Lakshya Passive Stationery)",
+]
+
+PHASE1_STATE_FILE = Path("phase1_activation_state.json")
+
+
+def load_phase1_state():
+    if PHASE1_STATE_FILE.exists():
+        try:
+            return json.loads(PHASE1_STATE_FILE.read_text())
+        except Exception:
+            pass
+    return {"last_index": -1}
+
+
+def save_phase1_state(state):
+    PHASE1_STATE_FILE.write_text(json.dumps(state))
+
+
+def activate_next_phase1_stream():
+    state = load_phase1_state()
+    next_idx = state.get("last_index", -1) + 1
+
+    if next_idx >= len(PHASE1_SEQUENCE):
+        logging.info("✅ All Phase 1 streams already activated.")
+        return
+
+    stream_name = PHASE1_SEQUENCE[next_idx]
+
+    # 👉 here later we’ll plug real activation logic (Printify, Fiverr, etc.)
+    logging.info(
+        "🚀 Activating Phase 1 stream #%s: %s",
+        next_idx + 1,
+        stream_name,
+    )
+
+    try:
+        send_internal_email(
+            subject=f"JRAVIS Phase 1 activation — {stream_name}",
+            body=(
+                f"Boss,\n\n"
+                f"JRAVIS just activated Phase 1 stream #{next_idx+1}:\n"
+                f"  👉 {stream_name}\n\n"
+                f"Mode: staggered (1 stream/day).\n\n"
+                f"- Dhruvayu"
+            ),
+        )
+    except Exception as e:
+        logging.warning("Email send failed for %s: %s", stream_name, e)
+
+    state["last_index"] = next_idx
+    save_phase1_state(state)
 
 # -----------------------
 # PDF report helpers (optional)
@@ -616,16 +685,20 @@ def check_and_start_phases():
             except Exception:
                 pass
 
-
 # schedule: heartbeat (every HEARTBEAT_INTERVAL sec is handled separately), phase check, daily & weekly emails, gmail poll
 schedule.every(30).minutes.do(check_and_start_phases)
+
+# Activate ONE Phase 1 stream per day (to reduce risk)
+schedule.every().day.at("04:20").do(activate_next_phase1_stream)  # ~09:50 IST
+
 # Daily at 04:30 UTC ~ 10:00 IST (adjust as needed)
 schedule.every().day.at("04:30").do(lambda: run_daily_job())
+
 # Weekly (Sunday at 18:30 UTC ~ Sunday 00:00 IST)
 schedule.every().saturday.at("18:30").do(lambda: run_weekly_job())
+
 # Gmail polling
 schedule.every(GMAIL_POLL_MIN).minutes.do(gmail_autoreply_once)
-
 
 # helper jobs (defined after scheduler)
 def run_daily_job():
