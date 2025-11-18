@@ -73,3 +73,11 @@ schedule
 pydantic
 jinja2
 python-dotenv
+
+pyyaml
+requests
+python-dotenv
+reportlab
+schedule
+pandas
+openpyxl
