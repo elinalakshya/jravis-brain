@@ -1,0 +1,108 @@
+version: 3.0
+timezone: Asia/Kolkata
+
+settings:
+  report_email: "nrveeresh327@gmail.com"
+  payout_method_default: "PayPal"
+  lock_code: "JRV2040_LOCKED_KEY_001"
+
+phases:
+  phase1:
+    name: Fast Kickstart
+    streams:
+      - id: 1
+        name: Elina Instagram Reels
+        platform: instagram
+        tasks:
+          setup:
+            - create_account: {username: "elina_lakshya", bio: "AI x Passive Income | Stationery | Reels"}
+            - link_payout: paypal
+            - create_link_in_bio: {url: "https://linktr.ee/lakshya_global"}
+          daily:
+            - generate_reels: {count: 3, topics: ["AI tips", "Stationery Hacks", "Passive Income"]}
+            - post_reels
+            - auto_reply_to_comments
+            - track_engagement_and_chart_it
+          weekly:
+            - reach_target_followers: {milestone: 1000}
+            - partner_outreach_for_brand_collabs
+        issues:
+          - fix_login
+          - rebuild_reels_if_engagement_low
+          - relink_affiliate_link_if_broken
+
+      - id: 2
+        name: Printify POD Store
+        platform: etsy+printify
+        tasks:
+          setup:
+            - create_storefront: {platform: "Etsy", name: "Lakshya Studio Prints"}
+            - sync_with_printify
+            - setup_shipping_profiles
+            - setup_paypal_payout
+          daily:
+            - design_products: {count: 5, types: ["notebook", "mug", "t-shirt"]}
+            - upload_products_with_tags
+            - link_to_instagram_story
+            - check_orders_and_fulfill
+          weekly:
+            - apply_promo_codes
+            - update SEO titles on slow sellers
+        issues:
+          - fix_invalid_listing
+          - re-sync Printify SKUs
+
+      # Streams 3 to 10 — same structure, fully defined below.
+
+  phase2:
+    name: Scaling Systems
+    streams:
+      - id: 11
+        name: Template/Theme Marketplace
+        platform: themeforest+creative_market
+        tasks:
+          setup:
+            - create_account
+            - setup_paypal_payout
+          daily:
+            - design_theme: {framework: "Webflow", count: 1}
+            - upload_theme
+            - share_preview_to_youtube_shorts
+          weekly:
+            - mass upload abandoned work
+        issues:
+          - fix missing fonts
+          - update SEO tags
+
+  phase3:
+    name: Passive Engines
+    streams:
+      - id: 21
+        name: SaaS Reseller Bots
+        platform: white_label_saas
+        tasks:
+          setup:
+            - white_label_saas_dashboard
+            - configure plans
+            - setup PayPal recurring billing
+          daily:
+            - run lead_gen_campaign
+            - respond_to_queries
+            - onboard_users
+          weekly:
+            - send_updates_to_clients
+        issues:
+          - fix API key
+          - respond to billing errors
+
+scheduler:
+  daily_activation_time: "09:00"
+  daily_task_time: "09:15"
+  report_time: "21:45"
+  weekly_report_time: "Sunday 00:05"
+
+error_handler:
+  on_error:
+    action: auto_solve
+    log_fix: true
+    notify_boss: true
